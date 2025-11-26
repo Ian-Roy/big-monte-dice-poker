@@ -20,17 +20,6 @@ class DiceState extends Phaser.Events.EventEmitter {
     return { values: [...this.values] as DiceValues, locks: [...this.locks] as DiceLocks };
   }
 
-  setValues(values: Array<number | null | undefined>, opts?: { respectLocks?: boolean }) {
-    const next: DiceValues = [...this.values] as DiceValues;
-    for (let i = 0; i < next.length; i++) {
-      if (opts?.respectLocks && this.locks[i]) continue;
-      const v = values[i];
-      next[i] = typeof v === 'number' ? Number(v) : null;
-    }
-    this.values = next;
-    this.emitChange();
-  }
-
   applyRollResults(rollValues: number[]) {
     const next: DiceValues = [...this.values] as DiceValues;
     let rollIdx = 0;
@@ -55,33 +44,9 @@ class DiceState extends Phaser.Events.EventEmitter {
     this.emitChange();
   }
 
-  setLocks(locks: Array<boolean | undefined>) {
-    const next: DiceLocks = [...this.locks] as DiceLocks;
-    for (let i = 0; i < next.length; i++) {
-      if (typeof locks[i] === 'boolean') {
-        next[i] = Boolean(locks[i]);
-      }
-    }
-    this.locks = next;
-    this.emitChange();
-  }
-
   reset() {
     this.values = [...BLANK_VALUES];
     this.locks = [...UNLOCKED_LOCKS];
-    this.emitChange();
-  }
-
-  applyResultPatch(entries: Array<{ idx: number; value: number }>, opts?: { respectLocks?: boolean }) {
-    const next: DiceValues = [...this.values] as DiceValues;
-    entries.forEach(({ idx, value }) => {
-      if (idx < 0 || idx >= next.length) return;
-      if (opts?.respectLocks && this.locks[idx]) return;
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        next[idx] = Number(value);
-      }
-    });
-    this.values = next;
     this.emitChange();
   }
 

@@ -208,8 +208,8 @@ export class MainScene extends Phaser.Scene {
     const rowHeight = this.scoreboardRowHeight;
     let y = startY;
 
-    const upperCats = this.scoreCategories.filter((c) => this.upperKeys.includes(c.key));
-    const bonusCat = this.scoreCategories.find((c) => c.key === 'upper-bonus');
+    const upperCats = this.upperScoringCategories();
+    const bonusCat = this.findCategory('upper-bonus');
     const lowerCats = this.scoreCategories.filter((c) => this.lowerKeys.includes(c.key));
 
     y = this.addSectionHeader('Upper Section', centerX, colWidth, y);
@@ -340,6 +340,18 @@ export class MainScene extends Phaser.Scene {
     this.infoText.setText(text);
   }
 
+  private getDiceNumbers() {
+    return this.diceValues.filter((v): v is number => typeof v === 'number');
+  }
+
+  private findCategory(key: CategoryKey) {
+    return this.scoreCategories.find((c) => c.key === key);
+  }
+
+  private upperScoringCategories() {
+    return this.scoreCategories.filter((c) => this.upperKeys.includes(c.key));
+  }
+
   private async handleRollClick() {
     console.debug('[scene] handleRollClick', { rolling: this.rolling, rollsLeft: this.rollsLeft });
     if (this.rolling) return;
@@ -389,7 +401,7 @@ export class MainScene extends Phaser.Scene {
 
   private handleScoreCategory(key: CategoryKey) {
     if (this.confirmContainer) return;
-    const cat = this.scoreCategories.find((c) => c.key === key);
+    const cat = this.findCategory(key);
     if (!cat || cat.scored) return;
     if (this.rolling) {
       this.addToast('Wait for the roll to finish');
@@ -404,7 +416,7 @@ export class MainScene extends Phaser.Scene {
       return;
     }
 
-    const dice = this.diceValues.filter((v): v is number => typeof v === 'number');
+    const dice = this.getDiceNumbers();
     if (dice.length !== 5) {
       this.addToast('Roll the dice first');
       return;
@@ -534,12 +546,13 @@ export class MainScene extends Phaser.Scene {
       return;
     }
     cat.score = score;
-    const dice = this.diceValues.filter((v): v is number => typeof v === 'number');
+    const dice = this.getDiceNumbers();
     if (dice.length === 5) {
       cat.scoredDice = [...dice];
     }
     cat.scored = true;
     this.updateScoreRow(cat);
+    this.updateUpperBonusIfReady();
     this.addToast(`${cat.label}: +${score} points`);
     this.closeConfirm();
     this.advanceRound();
@@ -570,12 +583,12 @@ export class MainScene extends Phaser.Scene {
   }
 
   private hasFullRoll() {
-    return this.diceValues.every((v) => typeof v === 'number');
+    return this.getDiceNumbers().length === this.diceValues.length;
   }
 
   private previewScore(cat: ScoreCategory) {
     if (cat.scored || cat.interactive === false) return null;
-    const dice = this.diceValues.filter((v): v is number => typeof v === 'number');
+    const dice = this.getDiceNumbers();
     if (dice.length !== 5) return null;
     const val = this.computeScore(cat.key, dice);
     return val > 0 ? val : null;
@@ -660,6 +673,30 @@ export class MainScene extends Phaser.Scene {
       }
     }
     return false;
+  }
+
+  private updateUpperBonusIfReady() {
+    const bonusCat = this.findCategory('upper-bonus');
+    if (!bonusCat) return;
+
+    const upperCats = this.upperScoringCategories();
+    const allUpperScored = upperCats.every((c) => c.scored);
+    if (!allUpperScored) {
+      bonusCat.score = null;
+      bonusCat.scored = false;
+      this.updateScoreRow(bonusCat);
+      return;
+    }
+
+    const upperTotal = upperCats.reduce((sum, cat) => sum + (cat.score ?? 0), 0);
+    const bonusScore = upperTotal >= 63 ? 35 : 0;
+    const changed = bonusCat.score !== bonusScore || bonusCat.scored === false;
+    bonusCat.score = bonusScore;
+    bonusCat.scored = true;
+    if (changed) {
+      this.updateScoreRow(bonusCat);
+      this.updateInfoText();
+    }
   }
 
   private handleDieToggle(idx: number) {
