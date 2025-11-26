@@ -12,6 +12,7 @@ type DiceEnabledConfig = Phaser.Types.Core.GameConfig & { diceBox?: DiceBox };
 type GameWithDice = Phaser.Game & { diceBox?: DiceBox };
 
 export class MainScene extends Phaser.Scene {
+  private readonly dieIds = ['d1', 'd2', 'd3', 'd4', 'd5'] as const;
   private currentRound = 1;
   private rollsLeft = 3;
   private diceValues: DiceValues = [null, null, null, null, null];
@@ -57,6 +58,10 @@ export class MainScene extends Phaser.Scene {
 
     box.onRollResult = (die) => {
       console.debug('[scene] onRollResult (single die)', die);
+      const parsed = this.parseDieResult(die);
+      if (parsed) {
+        diceState.applyResultPatch([{ idx: parsed.idx, value: parsed.value }], { respectLocks: true });
+      }
     };
 
     box.onRollComplete = (results) => {
@@ -217,9 +222,13 @@ export class MainScene extends Phaser.Scene {
     this.updateHeaderText();
 
     try {
-      const notation = `${unlockedIndices.length}d6`;
-      const resultGroups = await this.diceBox.roll(notation);
-      console.debug('[scene] roll raw resultGroups', { notation, resultGroups });
+      const notationArray = unlockedIndices.map((idx) => ({
+        sides: 6,
+        qty: 1,
+        rollId: this.dieIds[idx]
+      }));
+      const resultGroups = await this.diceBox.roll(notationArray);
+      console.debug('[scene] roll raw resultGroups', { notationArray, resultGroups });
       const group = Array.isArray(resultGroups) ? resultGroups[0] : undefined;
       const values = this.extractDiceValues(group ?? resultGroups);
       if (values.length) {
@@ -271,6 +280,7 @@ export class MainScene extends Phaser.Scene {
     if (!result) return [];
     const groups = Array.isArray(result) ? result : [result as never];
     const values: number[] = [];
+    const patches: Array<{ idx: number; value: number }> = [];
 
     groups.forEach((group) => {
       if (!group) return;
@@ -283,17 +293,37 @@ export class MainScene extends Phaser.Scene {
 
       if (Array.isArray(rolls)) {
         rolls.forEach((die) => {
-          const v = (die as { value?: unknown })?.value;
-          if (typeof v === 'number' && Number.isFinite(v)) {
-            values.push(Number(v));
-          } else if (typeof die === 'number' && Number.isFinite(die)) {
-            values.push(Number(die));
+          const parsed = this.parseDieResult(die);
+          if (parsed) {
+            patches.push(parsed);
+            values.push(parsed.value);
+          } else {
+            const v = (die as { value?: unknown })?.value;
+            if (typeof v === 'number' && Number.isFinite(v)) {
+              values.push(Number(v));
+            } else if (typeof die === 'number' && Number.isFinite(die)) {
+              values.push(Number(die));
+            }
           }
         });
       }
     });
 
+    if (patches.length) {
+      diceState.applyResultPatch(patches, { respectLocks: true });
+    }
+
     return values.slice(0, 5);
+  }
+
+  private parseDieResult(die: unknown): { idx: number; value: number } | null {
+    if (!die || typeof die !== 'object') return null;
+    const rollId = (die as { rollId?: unknown }).rollId;
+    const value = (die as { value?: unknown }).value;
+    if (typeof rollId !== 'string' || typeof value !== 'number' || !Number.isFinite(value)) return null;
+    const idx = this.dieIds.indexOf(rollId as (typeof this.dieIds)[number]);
+    if (idx === -1) return null;
+    return { idx, value: Number(value) };
   }
 
   private formatDieLabel(idx: number) {
@@ -330,4 +360,5 @@ export class MainScene extends Phaser.Scene {
       onComplete: () => t.destroy()
     });
   }
+
 }

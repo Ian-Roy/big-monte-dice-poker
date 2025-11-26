@@ -7,11 +7,14 @@ import { PreloadScene } from './scenes/PreloadScene';
 import { MainScene } from './scenes/MainScene';
 import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
+import { setupLockedDiceTray } from './shared/LockedDiceTray';
 
 type DiceGameConfig = Phaser.Types.Core.GameConfig & { diceBox?: DiceBox };
 type GameWithDice = Phaser.Game & { diceBox?: DiceBox };
 
 async function boot() {
+  setupLockedDiceTray();
+
   // Initialize Dice-Box in its own HTML container so the scene can request rolls
   let diceBox: DiceBox | undefined;
   try {

@@ -72,6 +72,19 @@ class DiceState extends Phaser.Events.EventEmitter {
     this.emitChange();
   }
 
+  applyResultPatch(entries: Array<{ idx: number; value: number }>, opts?: { respectLocks?: boolean }) {
+    const next: DiceValues = [...this.values] as DiceValues;
+    entries.forEach(({ idx, value }) => {
+      if (idx < 0 || idx >= next.length) return;
+      if (opts?.respectLocks && this.locks[idx]) return;
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        next[idx] = Number(value);
+      }
+    });
+    this.values = next;
+    this.emitChange();
+  }
+
   private emitChange() {
     this.emit(DiceStateEvent.Change, this.getState());
   }
