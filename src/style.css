@@ -15,7 +15,7 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12px;
+  padding-top: 6px;
   overscroll-behavior: contain;
 }
 
@@ -26,8 +26,8 @@ body {
 #game-root {
   position: relative;
   width: min(1024px, 100vw);
-  height: min(768px, calc(100vh - 32px));
-  margin: 16px auto;
+  height: min(1150px, calc(100vh - 8px));
+  margin: 8px auto;
   background: linear-gradient(135deg, #022534, #031728);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;

@@ -10,6 +10,7 @@ type CategoryKey =
   | 'fours'
   | 'fives'
   | 'sixes'
+  | 'upper-bonus'
   | 'three-kind'
   | 'four-kind'
   | 'full-house'
@@ -23,6 +24,9 @@ type ScoreCategory = {
   label: string;
   score: number | null;
   scored: boolean;
+  section: 'upper' | 'lower';
+  interactive?: boolean;
+  scoredDice?: number[];
 };
 
 type ScoreRow = {
@@ -41,25 +45,37 @@ export class MainScene extends Phaser.Scene {
   private rollButton!: Phaser.GameObjects.Rectangle;
   private rollLabel!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
-  private scoreboardHeight = 230;
+  private scoreboardHeight = 500;
   private scoreboardCenterY = 0;
   private rollButtonY = 0;
   private diceAreaHeight = 0;
   private scoreRows: Map<CategoryKey, ScoreRow> = new Map();
   private scoreCategories: ScoreCategory[] = [];
   private maxRounds = 13;
+  private confirmContainer?: Phaser.GameObjects.Container;
+  private readonly upperKeys: CategoryKey[] = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'];
+  private readonly lowerKeys: CategoryKey[] = [
+    'three-kind',
+    'four-kind',
+    'full-house',
+    'small-straight',
+    'large-straight',
+    'yahtzee',
+    'chance'
+  ];
 
   private handleDiceStateUpdate = ({ values, locks }: DiceSnapshot) => {
     console.debug('[scene] dice state change', { values, locks });
     this.diceValues = values;
     this.diceLocks = locks;
     this.diceManager.updateState(values, locks);
+    this.refreshScoreRows();
   };
 
   constructor() {
     super('main');
     this.scoreCategories = this.buildScoreCategories();
-    this.maxRounds = this.scoreCategories.length;
+    this.maxRounds = this.upperKeys.length + this.lowerKeys.length;
   }
 
   create() {
@@ -73,19 +89,20 @@ export class MainScene extends Phaser.Scene {
 
   private buildScoreCategories(): ScoreCategory[] {
     return [
-      { key: 'ones', label: 'Ones', score: null, scored: false },
-      { key: 'twos', label: 'Twos', score: null, scored: false },
-      { key: 'threes', label: 'Threes', score: null, scored: false },
-      { key: 'fours', label: 'Fours', score: null, scored: false },
-      { key: 'fives', label: 'Fives', score: null, scored: false },
-      { key: 'sixes', label: 'Sixes', score: null, scored: false },
-      { key: 'three-kind', label: 'Three of a Kind', score: null, scored: false },
-      { key: 'four-kind', label: 'Four of a Kind', score: null, scored: false },
-      { key: 'full-house', label: 'Full House (25)', score: null, scored: false },
-      { key: 'small-straight', label: 'Small Straight (30)', score: null, scored: false },
-      { key: 'large-straight', label: 'Large Straight (40)', score: null, scored: false },
-      { key: 'yahtzee', label: 'Yahtzee (50)', score: null, scored: false },
-      { key: 'chance', label: 'Chance', score: null, scored: false }
+      { key: 'ones', label: 'Ones', score: null, scored: false, section: 'upper' },
+      { key: 'twos', label: 'Twos', score: null, scored: false, section: 'upper' },
+      { key: 'threes', label: 'Threes', score: null, scored: false, section: 'upper' },
+      { key: 'fours', label: 'Fours', score: null, scored: false, section: 'upper' },
+      { key: 'fives', label: 'Fives', score: null, scored: false, section: 'upper' },
+      { key: 'sixes', label: 'Sixes', score: null, scored: false, section: 'upper' },
+      { key: 'upper-bonus', label: 'Upper Bonus (+35 if 63+)', score: null, scored: false, section: 'upper', interactive: false },
+      { key: 'three-kind', label: 'Three of a Kind', score: null, scored: false, section: 'lower' },
+      { key: 'four-kind', label: 'Four of a Kind', score: null, scored: false, section: 'lower' },
+      { key: 'full-house', label: 'Full House (25)', score: null, scored: false, section: 'lower' },
+      { key: 'small-straight', label: 'Small Straight (30)', score: null, scored: false, section: 'lower' },
+      { key: 'large-straight', label: 'Large Straight (40)', score: null, scored: false, section: 'lower' },
+      { key: 'yahtzee', label: 'Yahtzee (50)', score: null, scored: false, section: 'lower' },
+      { key: 'chance', label: 'Chance', score: null, scored: false, section: 'lower' }
     ];
   }
 
@@ -93,9 +110,9 @@ export class MainScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
 
-    this.scoreboardHeight = 230;
+    this.scoreboardHeight = 500;
     this.scoreboardCenterY = h - this.scoreboardHeight / 2 - 12;
-    this.rollButtonY = this.scoreboardCenterY - this.scoreboardHeight / 2 - 28;
+    this.rollButtonY = this.scoreboardCenterY - this.scoreboardHeight / 2 - 36;
     this.diceAreaHeight = Math.max(260, this.rollButtonY - 40);
 
     this.add.rectangle(w / 2, 42, w * 0.9, 70, 0x041927).setOrigin(0.5);
@@ -133,10 +150,10 @@ export class MainScene extends Phaser.Scene {
 
   private createScoreBoard() {
     const w = this.scale.width;
-    const bgWidth = w * 0.9;
+    const bgWidth = w * 0.92;
 
     this.add
-      .rectangle(w / 2, this.scoreboardCenterY, bgWidth, this.scoreboardHeight, 0x0b1a28, 0.8)
+      .rectangle(w / 2, this.scoreboardCenterY, bgWidth, this.scoreboardHeight, 0x0b1a28, 0.82)
       .setStrokeStyle(2, 0x123f5b, 0.7)
       .setDepth(8);
 
@@ -144,58 +161,107 @@ export class MainScene extends Phaser.Scene {
       .text(
         w / 2 - bgWidth / 2 + 14,
         this.scoreboardCenterY - this.scoreboardHeight / 2 + 12,
-        'Scorecard (tap to score)',
+        'Scorecard',
         {
           fontFamily: 'monospace',
-          fontSize: '16px',
+          fontSize: '17px',
           color: '#9ad5ff'
         }
       )
       .setDepth(9);
 
-    const perCol = Math.ceil(this.scoreCategories.length / 2);
-    const colGap = 16;
-    const colWidth = (bgWidth - colGap - 24) / 2;
-    const leftX = w / 2 - (colWidth + colGap) / 2;
-    const rightX = w / 2 + (colWidth + colGap) / 2;
-    const startY = this.scoreboardCenterY - this.scoreboardHeight / 2 + 48;
-    const rowHeight = 30;
+    const colWidth = bgWidth - 32;
+    const centerX = w / 2;
+    const startY = this.scoreboardCenterY - this.scoreboardHeight / 2 + 50;
+    const rowHeight = 32;
+    let y = startY;
 
-    this.scoreCategories.forEach((cat, idx) => {
-      const col = idx < perCol ? 0 : 1;
-      const row = col === 0 ? idx : idx - perCol;
-      const x = col === 0 ? leftX : rightX;
-      const y = startY + row * rowHeight;
+    const upperCats = this.scoreCategories.filter((c) => this.upperKeys.includes(c.key));
+    const bonusCat = this.scoreCategories.find((c) => c.key === 'upper-bonus');
+    const lowerCats = this.scoreCategories.filter((c) => this.lowerKeys.includes(c.key));
 
-      const bgRect = this.add
-        .rectangle(x, y, colWidth, rowHeight - 2, 0x0f2636, 0.82)
-        .setStrokeStyle(1.5, 0x7ad3ff, 0.6)
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true })
-        .setDepth(9);
+    y = this.addSectionHeader('Upper Section', centerX, colWidth, y);
+    upperCats
+      .filter((c) => c.key !== 'upper-bonus')
+      .forEach((cat) => {
+        this.createScoreRow(cat, centerX, colWidth, rowHeight, y);
+        y += rowHeight;
+      });
 
-      const label = this.add
-        .text(x - colWidth / 2 + 10, y, cat.label, {
-          fontFamily: 'monospace',
-          fontSize: '16px',
-          color: '#e7edf2'
-        })
-        .setOrigin(0, 0.5)
-        .setDepth(10);
+    if (bonusCat) {
+      y += 10;
+      this.createScoreRow(bonusCat, centerX, colWidth, rowHeight, y);
+      y += rowHeight;
+    }
 
-      const value = this.add
-        .text(x + colWidth / 2 - 10, y, 'Tap to score', {
-          fontFamily: 'monospace',
-          fontSize: '15px',
-          color: '#9ad5ff'
-        })
-        .setOrigin(1, 0.5)
-        .setDepth(10);
-
-      this.scoreRows.set(cat.key, { bg: bgRect, label, value });
-      bindPress(bgRect, () => this.handleScoreCategory(cat.key));
-      this.updateScoreRow(cat);
+    y += 18;
+    y = this.addSectionHeader('Lower Section (Poker Hands)', centerX, colWidth, y);
+    lowerCats.forEach((cat) => {
+      this.createScoreRow(cat, centerX, colWidth, rowHeight, y);
+      y += rowHeight;
     });
+
+    // Initialize rows with correct text/colors
+    this.scoreCategories.forEach((cat) => this.updateScoreRow(cat));
+  }
+
+  private addSectionHeader(title: string, centerX: number, width: number, y: number) {
+    this.add
+      .text(centerX - width / 2 + 4, y - 16, title, {
+        fontFamily: 'monospace',
+        fontSize: '16px',
+        color: '#9ad5ff'
+      })
+      .setOrigin(0, 0.5)
+      .setDepth(9);
+    return y + 8;
+  }
+
+  private createScoreRow(
+    cat: ScoreCategory,
+    centerX: number,
+    width: number,
+    rowHeight: number,
+    y: number
+  ) {
+    const interactive = cat.interactive !== false;
+    const bgRect = this.add
+      .rectangle(centerX, y, width, rowHeight - 2, interactive ? 0x0f2636 : 0x1a1f34, 0.9)
+      .setStrokeStyle(2, interactive ? 0x7ad3ff : 0xffdf7f, interactive ? 0.65 : 0.8)
+      .setOrigin(0.5)
+      .setDepth(9);
+
+    if (interactive) {
+      bgRect.setInteractive({ useHandCursor: true });
+      bindPress(bgRect, () => this.handleScoreCategory(cat.key));
+    }
+
+    const labelY = y - 6;
+    const valueY = y - 6;
+    const previewY = y + 9;
+
+    const label = this.add
+      .text(centerX - width / 2 + 10, labelY, cat.label, {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#e7edf2'
+      })
+      .setOrigin(0, 0.5)
+      .setDepth(10);
+
+    const defaultValueText = interactive ? 'Tap to score' : 'Upper bonus auto-applied';
+    const defaultValueColor = interactive ? '#b7e2ff' : '#ffdf7f';
+    const value = this.add
+      .text(centerX + width / 2 - 10, valueY, defaultValueText, {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: defaultValueColor
+      })
+      .setOrigin(1, 0.5)
+      .setDepth(10);
+    // Preview line removed; inline hint handled in updateScoreRow
+
+    this.scoreRows.set(cat.key, { bg: bgRect, label, value });
   }
 
   private createDiceArea() {
@@ -291,6 +357,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handleScoreCategory(key: CategoryKey) {
+    if (this.confirmContainer) return;
     const cat = this.scoreCategories.find((c) => c.key === key);
     if (!cat || cat.scored) return;
     if (this.rolling) {
@@ -313,24 +380,137 @@ export class MainScene extends Phaser.Scene {
     }
 
     const score = this.computeScore(cat.key, dice);
-    cat.score = score;
-    cat.scored = true;
-    this.updateScoreRow(cat);
-    this.addToast(`${cat.label}: +${score} points`);
-    this.advanceRound();
+    this.showScoreConfirm(cat, score);
   }
 
   private updateScoreRow(cat: ScoreCategory) {
     const row = this.scoreRows.get(cat.key);
     if (!row) return;
     const scored = cat.scored;
-    row.value.setText(typeof cat.score === 'number' ? `${cat.score}` : 'Tap to score');
-    row.value.setColor(scored ? '#ffc857' : '#9ad5ff');
-    row.bg.setFillStyle(scored ? 0x1a2b3b : 0x0f2636, scored ? 0.85 : 0.82);
-    row.bg.setStrokeStyle(scored ? 2 : 1.5, scored ? 0xffc857 : 0x7ad3ff, scored ? 0.9 : 0.6);
+    const isBonus = cat.key === 'upper-bonus';
+    const baseText = isBonus ? 'Upper bonus auto-applied' : 'Tap to score';
+    const preview = !scored && !isBonus ? this.previewScore(cat) : null;
+    const text = typeof cat.score === 'number' ? `${cat.score}` : preview ? `${baseText} (+${preview})` : baseText;
+    row.value.setText(text);
+    row.value.setColor(scored ? '#ffc857' : isBonus ? '#ffdf7f' : '#b7e2ff');
+    row.bg.setFillStyle(scored ? 0x1a2b3b : 0x0f2636, scored ? 0.9 : 0.9);
+    row.bg.setStrokeStyle(scored ? 2 : 2, scored ? 0xffc857 : 0x7ad3ff, scored ? 0.9 : 0.65);
     if (scored) {
       row.bg.disableInteractive();
     }
+  }
+
+  private refreshScoreRows() {
+    this.scoreCategories.forEach((cat) => this.updateScoreRow(cat));
+  }
+
+  private showScoreConfirm(cat: ScoreCategory, score: number) {
+    const w = this.scale.width;
+    const h = this.scale.height;
+    this.closeConfirm();
+
+    const overlayBg = this.add
+      .rectangle(w / 2, h / 2, w, h, 0x000000, 0.55)
+      .setInteractive({ useHandCursor: false })
+      .setDepth(100);
+
+    const cardWidth = 420;
+    const cardHeight = 200;
+    const cardBg = this.add
+      .rectangle(w / 2, h / 2, cardWidth, cardHeight, 0x0e1c2c, 0.96)
+      .setStrokeStyle(2, 0x7ad3ff, 0.8)
+      .setDepth(101);
+
+    const title = this.add
+      .text(w / 2, h / 2 - 60, `Score ${cat.label}?`, {
+        fontFamily: 'monospace',
+        fontSize: '22px',
+        color: '#e7edf2'
+      })
+      .setOrigin(0.5)
+      .setDepth(102);
+
+    const detail = this.add
+      .text(
+        w / 2,
+        h / 2 - 18,
+        `This will add ${score} point${score === 1 ? '' : 's'} and end round ${this.currentRound}.`,
+        {
+          fontFamily: 'monospace',
+          fontSize: '16px',
+          color: '#b7e2ff'
+        }
+      )
+      .setOrigin(0.5)
+      .setDepth(102);
+
+    const confirmBtn = this.add
+      .rectangle(w / 2 - 90, h / 2 + 46, 160, 48, 0x1f7bb6, 0.95)
+      .setStrokeStyle(2, 0x7ad3ff, 0.8)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(103);
+    const confirmLabel = this.add
+      .text(confirmBtn.x, confirmBtn.y, 'Score it', {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#ffffff'
+      })
+      .setOrigin(0.5)
+      .setDepth(104);
+
+    const cancelBtn = this.add
+      .rectangle(w / 2 + 90, h / 2 + 46, 160, 48, 0x12263b, 0.95)
+      .setStrokeStyle(2, 0x7ad3ff, 0.6)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(103);
+    const cancelLabel = this.add
+      .text(cancelBtn.x, cancelBtn.y, 'Cancel', {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#b7e2ff'
+      })
+      .setOrigin(0.5)
+      .setDepth(104);
+
+    const container = this.add.container(0, 0, [
+      overlayBg,
+      cardBg,
+      title,
+      detail,
+      confirmBtn,
+      cancelBtn,
+      confirmLabel,
+      cancelLabel
+    ]);
+    container.setDepth(100);
+    this.confirmContainer = container;
+
+    bindPress(confirmBtn, () => this.applyScore(cat, score));
+    bindPress(cancelBtn, () => this.closeConfirm());
+  }
+
+  private closeConfirm() {
+    if (this.confirmContainer) {
+      this.confirmContainer.destroy(true);
+      this.confirmContainer = undefined;
+    }
+  }
+
+  private applyScore(cat: ScoreCategory, score: number) {
+    if (cat.scored) {
+      this.closeConfirm();
+      return;
+    }
+    cat.score = score;
+    const dice = this.diceValues.filter((v): v is number => typeof v === 'number');
+    if (dice.length === 5) {
+      cat.scoredDice = [...dice];
+    }
+    cat.scored = true;
+    this.updateScoreRow(cat);
+    this.addToast(`${cat.label}: +${score} points`);
+    this.closeConfirm();
+    this.advanceRound();
   }
 
   private advanceRound() {
@@ -359,6 +539,14 @@ export class MainScene extends Phaser.Scene {
 
   private hasFullRoll() {
     return this.diceValues.every((v) => typeof v === 'number');
+  }
+
+  private previewScore(cat: ScoreCategory) {
+    if (cat.scored || cat.interactive === false) return null;
+    const dice = this.diceValues.filter((v): v is number => typeof v === 'number');
+    if (dice.length !== 5) return null;
+    const val = this.computeScore(cat.key, dice);
+    return val > 0 ? val : null;
   }
 
   private computeScore(key: CategoryKey, dice: number[]) {
