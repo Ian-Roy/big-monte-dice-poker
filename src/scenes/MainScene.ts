@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import DiceBox from '@3d-dice/dice-box';
-import { diceState, DiceStateEvent, type DiceValues } from '../shared/DiceState';
+import { diceState, DiceStateEvent, type DiceSnapshot, type DiceValues, type DiceLocks } from '../shared/DiceState';
 
 type DiceBoxWithEvents = DiceBox & {
   onRollResult?: (die: unknown) => void;
@@ -15,14 +15,16 @@ export class MainScene extends Phaser.Scene {
   private currentRound = 1;
   private rollsLeft = 3;
   private diceValues: DiceValues = [null, null, null, null, null];
+  private diceLocks: DiceLocks = [false, false, false, false, false];
   private diceText!: Phaser.GameObjects.Text;
   private roundText!: Phaser.GameObjects.Text;
   private rolling = false;
   private diceBox?: DiceBox;
   private dieButtons: { bg: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
-  private handleDiceStateUpdate = (values: DiceValues) => {
-    console.debug('[scene] dice state change', values);
+  private handleDiceStateUpdate = ({ values, locks }: DiceSnapshot) => {
+    console.debug('[scene] dice state change', { values, locks });
     this.diceValues = values;
+    this.diceLocks = locks;
     this.updateDiceText();
     this.updateDieButtons();
   };
@@ -61,7 +63,7 @@ export class MainScene extends Phaser.Scene {
       console.debug('[scene] onRollComplete', results);
       const values = this.extractDiceValues(results ?? box.getRollResults?.());
       if (values.length) {
-        diceState.setValues(values);
+        diceState.applyRollResults(values);
       } else {
         console.warn('[scene] onRollComplete found no values');
       }
@@ -168,11 +170,12 @@ export class MainScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
 
-      bg.on('pointerover', () => bg.setFillStyle(0x15415a, 0.9));
-      bg.on('pointerout', () => bg.setFillStyle(0x0f2636, 0.8));
+      bg.on('pointerover', () => this.setDieButtonStyle(i, true));
+      bg.on('pointerout', () => this.setDieButtonStyle(i, false));
       bg.on('pointerup', () => this.handleDieButtonClick(i));
 
       this.dieButtons.push({ bg, label });
+      this.setDieButtonStyle(i, false);
     }
   }
 
@@ -200,23 +203,36 @@ export class MainScene extends Phaser.Scene {
       return;
     }
 
+    const unlockedIndices = this.diceLocks
+      .map((locked, idx) => (!locked ? idx : -1))
+      .filter((idx) => idx >= 0);
+
+    if (!unlockedIndices.length) {
+      this.addToast('All dice locked');
+      return;
+    }
+
     this.rolling = true;
     this.rollsLeft -= 1;
     this.updateHeaderText();
 
     try {
-      const resultGroups = await this.diceBox.roll('5d6');
-      console.debug('[scene] roll raw resultGroups', resultGroups);
+      const notation = `${unlockedIndices.length}d6`;
+      const resultGroups = await this.diceBox.roll(notation);
+      console.debug('[scene] roll raw resultGroups', { notation, resultGroups });
       const group = Array.isArray(resultGroups) ? resultGroups[0] : undefined;
       const values = this.extractDiceValues(group ?? resultGroups);
       if (values.length) {
-        diceState.setValues(values);
+        diceState.applyRollResults(values);
+        if (values.length < unlockedIndices.length) {
+          console.warn('[scene] fewer roll values than unlocked dice', { values, unlockedIndices });
+        }
       } else {
         // Fallback: ask Dice-Box directly for its current results
         const directValues = this.extractDiceValues((this.diceBox as DiceBoxWithEvents).getRollResults?.());
         if (directValues.length) {
           console.debug('[scene] using getRollResults fallback', directValues);
-          diceState.setValues(directValues);
+          diceState.applyRollResults(directValues);
         } else {
           console.warn('[scene] roll produced no values');
         }
@@ -234,7 +250,21 @@ export class MainScene extends Phaser.Scene {
   private updateDieButtons() {
     this.dieButtons.forEach((btn, idx) => {
       btn.label.setText(this.formatDieLabel(idx));
+      this.setDieButtonStyle(idx, false);
     });
+  }
+
+  private setDieButtonStyle(idx: number, hovered: boolean) {
+    const btn = this.dieButtons[idx];
+    if (!btn) return;
+    const locked = this.diceLocks[idx];
+    const fill = locked ? (hovered ? 0x223447 : 0x1a2b3b) : hovered ? 0x15415a : 0x0f2636;
+    const alpha = locked ? 0.95 : hovered ? 0.9 : 0.8;
+    const strokeColor = locked ? 0xffc857 : 0x7ad3ff;
+    const strokeAlpha = locked ? 0.9 : hovered ? 0.8 : 0.6;
+    const strokeWidth = locked ? 3 : 2;
+    btn.bg.setFillStyle(fill, alpha);
+    btn.bg.setStrokeStyle(strokeWidth, strokeColor, strokeAlpha);
   }
 
   private extractDiceValues(result: unknown): number[] {
@@ -268,14 +298,20 @@ export class MainScene extends Phaser.Scene {
 
   private formatDieLabel(idx: number) {
     const value = this.diceValues[idx];
-    return `Die ${idx + 1}: ${typeof value === 'number' ? value : '-'}`;
+    const locked = this.diceLocks[idx];
+    const label = typeof value === 'number' ? value : '-';
+    return locked ? `Die ${idx + 1}: ${label} [LOCK]` : `Die ${idx + 1}: ${label}`;
   }
 
   private handleDieButtonClick(idx: number) {
+    const lockedBefore = this.diceLocks[idx];
+    diceState.toggleLock(idx);
+    const lockedAfter = !lockedBefore;
     const value = this.diceValues[idx];
-    const text = typeof value === 'number' ? `Die ${idx + 1} rolled a ${value}` : `Die ${idx + 1} not rolled yet`;
-    console.debug('[scene] die button click', { idx, value });
-    this.addToast(text);
+    const statusText = lockedAfter ? 'locked' : 'unlocked';
+    const valueText = typeof value === 'number' ? ` (${value})` : '';
+    console.debug('[scene] die button click -> toggle lock', { idx, lockedAfter, value });
+    this.addToast(`Die ${idx + 1} ${statusText}${valueText}`);
   }
 
   private addToast(text: string) {
