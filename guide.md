@@ -117,7 +117,7 @@ Copy code
     <div id="game-root">
       <div id="phaser-root"></div>
 
-      <!-- 3D dice overlay (Dice-Box renders its canvas inside here) -->
+      <!-- Dice overlay area (Phaser UI stays clickable) -->
       <div id="dice-overlay">
         <div id="dice-box"></div>
       </div>

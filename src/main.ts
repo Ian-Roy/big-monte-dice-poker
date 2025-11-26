@@ -1,6 +1,5 @@
 import './style.css';
 import Phaser from 'phaser';
-import DiceBox from '@3d-dice/dice-box';
 import { phaserConfig } from './phaser.config';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
@@ -9,38 +8,17 @@ import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
 import { setupLockedDiceTray } from './shared/LockedDiceTray';
 
-type DiceGameConfig = Phaser.Types.Core.GameConfig & { diceBox?: DiceBox };
-type GameWithDice = Phaser.Game & { diceBox?: DiceBox };
-
 async function boot() {
   setupLockedDiceTray();
 
-  // Initialize Dice-Box in its own HTML container so the scene can request rolls
-  let diceBox: DiceBox | undefined;
-  try {
-    diceBox = new DiceBox({
-      assetPath: `${import.meta.env.BASE_URL}assets/dice-box/`,
-      container: '#dice-box',
-      id: 'dice-canvas',
-      scale: 5,
-      gravity: 1
-    });
-    await diceBox.init();
-    console.info('[dice-box] initialized', { assetPath: `${import.meta.env.BASE_URL}assets/dice-box/` });
-    (window as unknown as Record<string, unknown>).diceBox = diceBox; // debugging hook
-  } catch (err) {
-    console.error('Failed to initialize Dice-Box', err);
-  }
-
-  const config: DiceGameConfig = {
+  const config: Phaser.Types.Core.GameConfig = {
     ...phaserConfig,
-    scene: [BootScene, PreloadScene, MainScene],
-    diceBox
+    scene: [BootScene, PreloadScene, MainScene]
   };
 
   // Launch game
-  const game = new Phaser.Game(config) as GameWithDice;
-  game.diceBox = diceBox; // attach directly so scenes can read it even if Phaser strips unknown config fields
+  // eslint-disable-next-line no-new
+  new Phaser.Game(config);
 }
 
 boot().catch((err) => console.error('Failed to bootstrap game', err));
