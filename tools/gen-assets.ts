@@ -43,7 +43,7 @@ function circlePng(size: number, bg = 0x0b1020ff, fg = 0x2bd4ffff) {
   return PNG.sync.write(png);
 }
 
-function set(png: PNG, x: number, y: number, rgba: number) {
+function set(png: any, x: number, y: number, rgba: number) {
   const idx = (png.width * y + x) << 2;
   png.data[idx + 0] = (rgba >> 24) & 0xff;
   png.data[idx + 1] = (rgba >> 16) & 0xff;

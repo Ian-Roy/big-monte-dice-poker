@@ -27,7 +27,7 @@ function renderTray(state: DiceSnapshot) {
   if (!locked.length) {
     const empty = document.createElement('div');
     empty.className = 'locked-dice-tray__empty';
-    empty.textContent = 'Click a die to lock it. Locked dice stay out of rerolls.';
+    empty.textContent = 'Tap or click a die to lock it. Locked dice stay out of rerolls.';
     tray.appendChild(empty);
     return;
   }

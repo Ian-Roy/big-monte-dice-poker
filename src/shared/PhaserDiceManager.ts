@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { bindPress } from './PointerPress';
 
 type DieVisual = {
   container: Phaser.GameObjects.Container;
@@ -40,10 +41,12 @@ export class PhaserDiceManager {
         })
         .setOrigin(0.5)
         .setAlpha(0);
-     const hitArea = this.scene.add.rectangle(pos.x, pos.y, sizeForHit(), sizeForHit(), 0xffffff, 0).setInteractive({
-        useHandCursor: true
-      });
-      hitArea.on('pointerup', () => {
+      const hitArea = this.scene
+        .add.rectangle(pos.x, pos.y, sizeForHit(), sizeForHit(), 0xffffff, 0)
+        .setInteractive({
+          useHandCursor: true
+        });
+      bindPress(hitArea, () => {
         if (this.onToggleLock) this.onToggleLock(idx);
       });
 

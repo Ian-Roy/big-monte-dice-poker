@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { diceState, DiceStateEvent, type DiceSnapshot, type DiceValues, type DiceLocks } from '../shared/DiceState';
 import { PhaserDiceManager } from '../shared/PhaserDiceManager';
+import { bindPress } from '../shared/PointerPress';
 
 export class MainScene extends Phaser.Scene {
   private currentRound = 1;
@@ -51,7 +52,7 @@ export class MainScene extends Phaser.Scene {
     });
 
     this.add
-      .text(24, 62, 'Roll the 3D dice, then score in Phaser.\n(Click ROLL on the right)', {
+      .text(24, 62, 'Roll the 3D dice, then score in Phaser.\n(Tap or click ROLL on the right)', {
         fontFamily: 'monospace',
         fontSize: '16px',
         color: '#9ad5ff'
@@ -72,7 +73,7 @@ export class MainScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    button.on('pointerup', () => this.handleRollClick());
+    bindPress(button, () => this.handleRollClick());
 
     this.createDieButtons(panelX, panelWidth, btnY);
 
@@ -84,7 +85,7 @@ export class MainScene extends Phaser.Scene {
     });
 
     this.add
-      .text(panelX + 24, 570, 'Click dice to lock.\nRerolls skip locked dice.', {
+      .text(panelX + 24, 570, 'Tap or click dice to lock.\nRerolls skip locked dice.', {
         fontFamily: 'monospace',
         fontSize: '16px',
         color: '#9ad5ff',
@@ -146,7 +147,7 @@ export class MainScene extends Phaser.Scene {
 
       bg.on('pointerover', () => this.setDieButtonStyle(i, true));
       bg.on('pointerout', () => this.setDieButtonStyle(i, false));
-      bg.on('pointerup', () => this.handleDieButtonClick(i));
+      bindPress(bg, () => this.handleDieButtonClick(i));
 
       this.dieButtons.push({ bg, label });
       this.setDieButtonStyle(i, false);

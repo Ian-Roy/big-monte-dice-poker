@@ -10,6 +10,15 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
     width: 1024,
     height: 768
   },
+  input: {
+    activePointers: 3,
+    touch: { capture: true },
+    mouse: {
+      preventDefaultDown: true,
+      preventDefaultUp: true,
+      preventDefaultMove: true
+    }
+  },
   fps: {
     target: 60,
     forceSetTimeOut: true
@@ -21,7 +30,7 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
   physics: {
     default: 'arcade',
     arcade: {
-      gravity: { y: 0 },
+      gravity: { x: 0, y: 0 },
       debug: false
     }
   }
