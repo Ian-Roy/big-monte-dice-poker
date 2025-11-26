@@ -3,7 +3,6 @@
  *  - icons: assets/icons/icon-192.png, icon-512.png (maskable-friendly simple glyph)
  *  - manifest.json for game assets
  *  - a tiny player sprite (player_dot.png)
- *  - a simple click SFX (click.wav) using PCM WAV writer
  *
  * This keeps the project entirely offline with no external downloads.
  */
@@ -15,7 +14,6 @@ import { PNG } from 'pngjs';
 const ASSETS = 'public/assets';
 const ICONS_DIR = join(ASSETS, 'icons');
 const IMG_DIR = join(ASSETS, 'img');
-const SFX_DIR = join(ASSETS, 'sfx');
 
 function ensure(dir: string) {
   mkdirSync(dir, { recursive: true });
@@ -69,45 +67,6 @@ function playerDotPng() {
   return PNG.sync.write(png);
 }
 
-// Minimal PCM WAV (8-bit unsigned mono) click
-function makeClickWav(): Buffer {
-  const sampleRate = 22050;
-  const durationSec = 0.08;
-  const N = Math.floor(sampleRate * durationSec);
-  const data = Buffer.alloc(N);
-  // Simple decaying noise burst
-  for (let i = 0; i < N; i++) {
-    const t = i / N;
-    const amp = (1 - t) * 0.8;
-    const v = (Math.random() * 2 - 1) * amp;
-    data[i] = Math.max(0, Math.min(255, Math.round(128 + 127 * v)));
-  }
-  return encodeWavU8Mono(data, sampleRate);
-}
-
-function encodeWavU8Mono(raw: Buffer, sampleRate: number): Buffer {
-  const header = Buffer.alloc(44);
-  const byteRate = sampleRate * 1 * 1;
-  const blockAlign = 1;
-  const subchunk2Size = raw.length * 1;
-
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + subchunk2Size, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);         // PCM
-  header.writeUInt16LE(1, 20);          // audio format = PCM
-  header.writeUInt16LE(1, 22);          // channels = 1
-  header.writeUInt32LE(sampleRate, 24); // sample rate
-  header.writeUInt32LE(byteRate, 28);   // byte rate
-  header.writeUInt16LE(blockAlign, 32); // block align
-  header.writeUInt16LE(8, 34);          // bits per sample
-  header.write('data', 36);
-  header.writeUInt32LE(subchunk2Size, 40);
-
-  return Buffer.concat([header, raw]);
-}
-
 function write(file: string, buf: Buffer) {
   writeFileSync(file, buf);
   console.log('generated', file);
@@ -122,22 +81,16 @@ function main() {
   ensure(ASSETS);
   ensure(ICONS_DIR);
   ensure(IMG_DIR);
-  ensure(SFX_DIR);
 
   write(join(ICONS_DIR, 'icon-192.png'), circlePng(192));
   write(join(ICONS_DIR, 'icon-512.png'), circlePng(512));
 
   write(join(IMG_DIR, 'player_dot.png'), playerDotPng());
 
-  write(join(SFX_DIR, 'click.wav'), makeClickWav());
-
   // Asset manifest used by PreloadScene
   writeJSON(join(ASSETS, 'manifest.json'), {
     images: [
       { key: 'player_dot', url: 'assets/img/player_dot.png' }
-    ],
-    audio: [
-      { key: 'click', urls: ['assets/sfx/click.wav'] }
     ]
   });
 }

@@ -33,6 +33,8 @@ type ScoreRow = {
   bg: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   value: Phaser.GameObjects.Text;
+  width: number;
+  diceIcons: Phaser.GameObjects.Image[];
 };
 
 export class MainScene extends Phaser.Scene {
@@ -45,7 +47,7 @@ export class MainScene extends Phaser.Scene {
   private rollButton!: Phaser.GameObjects.Rectangle;
   private rollLabel!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
-  private scoreboardHeight = 500;
+  private scoreboardHeight = 900;
   private scoreboardCenterY = 0;
   private rollButtonY = 0;
   private diceAreaHeight = 0;
@@ -110,10 +112,10 @@ export class MainScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
 
-    this.scoreboardHeight = 500;
+    this.scoreboardHeight = 900;
     this.scoreboardCenterY = h - this.scoreboardHeight / 2 - 12;
-    this.rollButtonY = this.scoreboardCenterY - this.scoreboardHeight / 2 - 36;
-    this.diceAreaHeight = Math.max(260, this.rollButtonY - 40);
+    this.rollButtonY = this.scoreboardCenterY - this.scoreboardHeight / 2 - 40;
+    this.diceAreaHeight = Math.max(320, this.rollButtonY - 40);
 
     this.add.rectangle(w / 2, 42, w * 0.9, 70, 0x041927).setOrigin(0.5);
     this.infoText = this.add.text(24, 22, '', {
@@ -168,12 +170,13 @@ export class MainScene extends Phaser.Scene {
           color: '#9ad5ff'
         }
       )
+      .setOrigin(0, 0)
       .setDepth(9);
 
     const colWidth = bgWidth - 32;
     const centerX = w / 2;
-    const startY = this.scoreboardCenterY - this.scoreboardHeight / 2 + 50;
-    const rowHeight = 32;
+    const startY = this.scoreboardCenterY - this.scoreboardHeight / 2 + 70;
+    const rowHeight = 56;
     let y = startY;
 
     const upperCats = this.scoreCategories.filter((c) => this.upperKeys.includes(c.key));
@@ -207,14 +210,14 @@ export class MainScene extends Phaser.Scene {
 
   private addSectionHeader(title: string, centerX: number, width: number, y: number) {
     this.add
-      .text(centerX - width / 2 + 4, y - 16, title, {
+      .text(centerX - width / 2 + 4, y - 8, title, {
         fontFamily: 'monospace',
         fontSize: '16px',
         color: '#9ad5ff'
       })
-      .setOrigin(0, 0.5)
+      .setOrigin(0, 0)
       .setDepth(9);
-    return y + 8;
+    return y + 14;
   }
 
   private createScoreRow(
@@ -238,7 +241,6 @@ export class MainScene extends Phaser.Scene {
 
     const labelY = y - 6;
     const valueY = y - 6;
-    const previewY = y + 9;
 
     const label = this.add
       .text(centerX - width / 2 + 10, labelY, cat.label, {
@@ -261,7 +263,7 @@ export class MainScene extends Phaser.Scene {
       .setDepth(10);
     // Preview line removed; inline hint handled in updateScoreRow
 
-    this.scoreRows.set(cat.key, { bg: bgRect, label, value });
+    this.scoreRows.set(cat.key, { bg: bgRect, label, value, width, diceIcons: [] });
   }
 
   private createDiceArea() {
@@ -398,6 +400,7 @@ export class MainScene extends Phaser.Scene {
     if (scored) {
       row.bg.disableInteractive();
     }
+    this.renderScoredDice(row, cat);
   }
 
   private refreshScoreRows() {
@@ -547,6 +550,24 @@ export class MainScene extends Phaser.Scene {
     if (dice.length !== 5) return null;
     const val = this.computeScore(cat.key, dice);
     return val > 0 ? val : null;
+  }
+
+  private renderScoredDice(row: ScoreRow, cat: ScoreCategory) {
+    // Clear any previous icons
+    row.diceIcons.forEach((icon) => icon.destroy());
+    row.diceIcons = [];
+    if (!cat.scoredDice || !cat.scoredDice.length) return;
+    const sorted = [...cat.scoredDice].sort((a, b) => a - b);
+    const size = 28;
+    const gap = 6;
+    const totalWidth = sorted.length * size + (sorted.length - 1) * gap;
+    const startX = row.bg.x - totalWidth / 2 + size / 2;
+    const y = row.bg.y - row.bg.height / 2 + 8 + size / 2;
+    sorted.forEach((val, idx) => {
+      const x = startX + idx * (size + gap);
+      const icon = this.add.image(x, y, `die-face-${val}`).setDisplaySize(size, size).setDepth(11);
+      row.diceIcons.push(icon);
+    });
   }
 
   private computeScore(key: CategoryKey, dice: number[]) {
