@@ -48,6 +48,13 @@ export class MainScene extends Phaser.Scene {
   private rollLabel!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
   private scoreboardHeight = 900;
+  private readonly scoreboardRowHeight = 56;
+  private readonly scoreboardTopPadding = 64;
+  private readonly scoreboardBottomPadding = 30;
+  private readonly scoreboardHeaderHeight = 18;
+  private readonly scoreboardHeaderGap = 10;
+  private readonly scoreboardSectionGap = 24;
+  private readonly scoreboardBonusGap = 12;
   private scoreboardCenterY = 0;
   private rollButtonY = 0;
   private diceAreaHeight = 0;
@@ -112,7 +119,7 @@ export class MainScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
 
-    this.scoreboardHeight = 900;
+    this.scoreboardHeight = this.computeScoreboardHeight(h);
     this.scoreboardCenterY = h - this.scoreboardHeight / 2 - 12;
     this.rollButtonY = this.scoreboardCenterY - this.scoreboardHeight / 2 - 40;
     this.diceAreaHeight = Math.max(320, this.rollButtonY - 40);
@@ -150,6 +157,28 @@ export class MainScene extends Phaser.Scene {
     bindPress(this.rollButton, () => this.handleRollClick());
   }
 
+  private computeScoreboardHeight(sceneHeight: number) {
+    const headerBlock = this.scoreboardHeaderHeight + this.scoreboardHeaderGap;
+    const upperRowsHeight = this.scoreboardRowHeight * this.upperKeys.length;
+    const lowerRowsHeight = this.scoreboardRowHeight * this.lowerKeys.length;
+    const bonusRowHeight = this.scoreboardRowHeight;
+
+    const baseHeight =
+      this.scoreboardTopPadding +
+      headerBlock +
+      upperRowsHeight +
+      this.scoreboardBonusGap +
+      bonusRowHeight +
+      this.scoreboardSectionGap +
+      headerBlock +
+      lowerRowsHeight +
+      this.scoreboardBottomPadding;
+
+    const minHeight = 900;
+    const maxHeight = sceneHeight - 40;
+    return Math.min(Math.max(baseHeight, minHeight), Math.max(minHeight, maxHeight));
+  }
+
   private createScoreBoard() {
     const w = this.scale.width;
     const bgWidth = w * 0.92;
@@ -175,8 +204,8 @@ export class MainScene extends Phaser.Scene {
 
     const colWidth = bgWidth - 32;
     const centerX = w / 2;
-    const startY = this.scoreboardCenterY - this.scoreboardHeight / 2 + 70;
-    const rowHeight = 56;
+    const startY = this.scoreboardCenterY - this.scoreboardHeight / 2 + this.scoreboardTopPadding;
+    const rowHeight = this.scoreboardRowHeight;
     let y = startY;
 
     const upperCats = this.scoreCategories.filter((c) => this.upperKeys.includes(c.key));
@@ -187,20 +216,20 @@ export class MainScene extends Phaser.Scene {
     upperCats
       .filter((c) => c.key !== 'upper-bonus')
       .forEach((cat) => {
-        this.createScoreRow(cat, centerX, colWidth, rowHeight, y);
+        this.createScoreRow(cat, centerX, colWidth, rowHeight, y + rowHeight / 2);
         y += rowHeight;
       });
 
     if (bonusCat) {
-      y += 10;
-      this.createScoreRow(bonusCat, centerX, colWidth, rowHeight, y);
+      y += this.scoreboardBonusGap;
+      this.createScoreRow(bonusCat, centerX, colWidth, rowHeight, y + rowHeight / 2);
       y += rowHeight;
     }
 
-    y += 18;
+    y += this.scoreboardSectionGap;
     y = this.addSectionHeader('Lower Section (Poker Hands)', centerX, colWidth, y);
     lowerCats.forEach((cat) => {
-      this.createScoreRow(cat, centerX, colWidth, rowHeight, y);
+      this.createScoreRow(cat, centerX, colWidth, rowHeight, y + rowHeight / 2);
       y += rowHeight;
     });
 
@@ -210,14 +239,14 @@ export class MainScene extends Phaser.Scene {
 
   private addSectionHeader(title: string, centerX: number, width: number, y: number) {
     this.add
-      .text(centerX - width / 2 + 4, y - 8, title, {
+      .text(centerX - width / 2 + 4, y, title, {
         fontFamily: 'monospace',
         fontSize: '16px',
         color: '#9ad5ff'
       })
       .setOrigin(0, 0)
-      .setDepth(9);
-    return y + 14;
+      .setDepth(11);
+    return y + this.scoreboardHeaderHeight + this.scoreboardHeaderGap;
   }
 
   private createScoreRow(
