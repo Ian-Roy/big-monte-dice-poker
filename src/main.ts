@@ -9,6 +9,7 @@ import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
 
 type DiceGameConfig = Phaser.Types.Core.GameConfig & { diceBox?: DiceBox };
+type GameWithDice = Phaser.Game & { diceBox?: DiceBox };
 
 async function boot() {
   // Initialize Dice-Box in its own HTML container so the scene can request rolls
@@ -22,6 +23,8 @@ async function boot() {
       gravity: 1
     });
     await diceBox.init();
+    console.info('[dice-box] initialized', { assetPath: `${import.meta.env.BASE_URL}assets/dice-box/` });
+    (window as unknown as Record<string, unknown>).diceBox = diceBox; // debugging hook
   } catch (err) {
     console.error('Failed to initialize Dice-Box', err);
   }
@@ -33,7 +36,8 @@ async function boot() {
   };
 
   // Launch game
-  const game = new Phaser.Game(config);
+  const game = new Phaser.Game(config) as GameWithDice;
+  game.diceBox = diceBox; // attach directly so scenes can read it even if Phaser strips unknown config fields
 }
 
 boot().catch((err) => console.error('Failed to bootstrap game', err));

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import DiceBox from '@3d-dice/dice-box';
 
 type DiceEnabledConfig = Phaser.Types.Core.GameConfig & { diceBox?: DiceBox };
+type GameWithDice = Phaser.Game & { diceBox?: DiceBox };
 
 export class MainScene extends Phaser.Scene {
   private currentRound = 1;
@@ -18,7 +19,11 @@ export class MainScene extends Phaser.Scene {
 
   create() {
     const cfg = this.game.config as DiceEnabledConfig;
-    this.diceBox = cfg.diceBox;
+    const gameDice = (this.game as GameWithDice).diceBox;
+    // Prefer the direct game attachment, fall back to config, then window hook for debugging
+    this.diceBox = gameDice ?? cfg.diceBox ?? ((window as unknown as Record<string, unknown>).diceBox as DiceBox | undefined);
+
+    console.info('[scene] create; diceBox present:', !!this.diceBox);
 
     this.createLayout();
     this.updateHeaderText();
@@ -103,6 +108,7 @@ export class MainScene extends Phaser.Scene {
     if (this.rolling) return;
     if (!this.diceBox) {
       this.addToast('Dice tray not ready');
+      console.warn('[scene] roll click ignored: diceBox missing');
       return;
     }
     if (this.rollsLeft <= 0) {
@@ -119,6 +125,7 @@ export class MainScene extends Phaser.Scene {
       const group = Array.isArray(resultGroups) ? resultGroups[0] : undefined;
       const values = group?.rolls?.map((die: { value: number }) => Number(die.value)) ?? [];
       this.diceValues = values;
+      console.info('[scene] roll result', { values });
       this.updateDiceText();
       // This is where scoring/locking can hook in later using this.diceValues.
     } catch (err) {
