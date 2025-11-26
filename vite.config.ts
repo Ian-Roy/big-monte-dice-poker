@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-// IMPORTANT: Set this to your repo name for GitHub Pages, e.g. "/polar-treasure/"
-const REPO_BASE = process.env.REPO_BASE || "/polar-treasure/";
+// IMPORTANT: Set this to your repo name for GitHub Pages, e.g. "/big-monte-dice-poker/"
+const REPO_BASE = process.env.REPO_BASE || "/big-monte-dice-poker/";
 
 export default defineConfig({
   base: REPO_BASE,
@@ -18,9 +18,9 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
       },
       manifest: {
-        name: "Polar Treasure",
-        short_name: "Polar Treasure",
-        description: "Phaser 3 PWA game starter (offline forever).",
+        name: "Big Monte Dice Poker",
+        short_name: "Big Monte Dice Poker",
+        description: "Phaser 3 PWA dice poker game.",
         display: "standalone",
         background_color: "#0b1020",
         theme_color: "#0b1020",

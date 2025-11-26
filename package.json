@@ -1,5 +1,5 @@
 {
-  "name": "polar-treasure",
+  "name": "big-monte-dice-poker",
   "version": "0.1.0",
   "private": true,
   "description": "Starter for Phaser 3 + TypeScript + Vite + PWA (offline forever), deployable to GitHub Pages.",
