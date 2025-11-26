@@ -6,11 +6,8 @@ import { PreloadScene } from './scenes/PreloadScene';
 import { MainScene } from './scenes/MainScene';
 import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
-import { setupLockedDiceTray } from './shared/LockedDiceTray';
 
 async function boot() {
-  setupLockedDiceTray();
-
   const config: Phaser.Types.Core.GameConfig = {
     ...phaserConfig,
     scene: [BootScene, PreloadScene, MainScene]

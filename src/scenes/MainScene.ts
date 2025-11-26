@@ -4,21 +4,17 @@ import { PhaserDiceManager } from '../shared/PhaserDiceManager';
 import { bindPress } from '../shared/PointerPress';
 
 export class MainScene extends Phaser.Scene {
-  private currentRound = 1;
   private rollsLeft = 3;
   private diceValues: DiceValues = [null, null, null, null, null];
   private diceLocks: DiceLocks = [false, false, false, false, false];
-  private diceText!: Phaser.GameObjects.Text;
-  private roundText!: Phaser.GameObjects.Text;
   private rolling = false;
-  private dieButtons: { bg: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
   private diceManager!: PhaserDiceManager;
+  private rollButton!: Phaser.GameObjects.Rectangle;
+  private rollLabel!: Phaser.GameObjects.Text;
   private handleDiceStateUpdate = ({ values, locks }: DiceSnapshot) => {
     console.debug('[scene] dice state change', { values, locks });
     this.diceValues = values;
     this.diceLocks = locks;
-    this.updateDiceText();
-    this.updateDieButtons();
     this.diceManager.updateState(values, locks);
   };
 
@@ -30,80 +26,40 @@ export class MainScene extends Phaser.Scene {
     this.createLayout();
     this.createDiceArea();
     this.setupDiceState();
-    this.updateHeaderText();
+    this.updateRollButton();
   }
 
   private createLayout() {
     const w = this.scale.width;
     const h = this.scale.height;
-    const panelWidth = 240;
-    const panelX = w - panelWidth;
-    this.dieButtons = [];
 
-    // Backdrop panels
-    this.add.rectangle(w / 2, 48, w, 96, 0x041927).setOrigin(0.5);
-    this.add.rectangle(panelX + panelWidth / 2, h / 2, panelWidth, h, 0x0b2e3f).setOrigin(0.5);
+    // Soft backdrop behind the dice cluster
+    this.add.rectangle(w / 2, h / 2 + 10, w * 0.82, h * 0.78, 0x02111d, 0.42);
 
-    // Header text (round / rolls)
-    this.roundText = this.add.text(24, 22, '', {
-      fontFamily: 'monospace',
-      fontSize: '24px',
-      color: '#e7edf2'
-    });
-
-    this.add
-      .text(24, 62, 'Roll the 3D dice, then score in Phaser.\n(Tap or click ROLL on the right)', {
-        fontFamily: 'monospace',
-        fontSize: '16px',
-        color: '#9ad5ff'
-      })
-      .setDepth(1);
-
-    // Roll button
-    const btnY = 130;
-    const button = this.add
-      .rectangle(panelX + panelWidth / 2, btnY, panelWidth - 40, 68, 0x1f7bb6, 0.98)
+    const btnY = h - 70;
+    this.rollButton = this.add
+      .rectangle(w / 2, btnY, 260, 70, 0x1f7bb6, 0.98)
       .setStrokeStyle(3, 0x7ad3ff)
-      .setInteractive({ useHandCursor: true });
-    this.add
-      .text(button.x, button.y, 'ROLL', {
+      .setInteractive({ useHandCursor: true })
+      .setDepth(10);
+    this.rollLabel = this.add
+      .text(this.rollButton.x, this.rollButton.y, this.rollButtonText(), {
         fontFamily: 'monospace',
         fontSize: '30px',
         color: '#ffffff'
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setDepth(11);
 
-    bindPress(button, () => this.handleRollClick());
-
-    this.createDieButtons(panelX, panelWidth, btnY);
-
-    this.diceText = this.add.text(panelX + 24, 520, '', {
-      fontFamily: 'monospace',
-      fontSize: '20px',
-      color: '#e7edf2',
-      wordWrap: { width: panelWidth - 48 }
-    });
-
-    this.add
-      .text(panelX + 24, 570, 'Tap or click dice to lock.\nRerolls skip locked dice.', {
-        fontFamily: 'monospace',
-        fontSize: '16px',
-        color: '#9ad5ff',
-        wordWrap: { width: panelWidth - 48 }
-      })
-      .setAlpha(0.85);
+    bindPress(this.rollButton, () => this.handleRollClick());
   }
 
   private createDiceArea() {
-    const panelWidth = 240;
-    const areaWidth = this.scale.width - panelWidth;
-    const areaHeight = this.scale.height;
+    const areaWidth = this.scale.width;
+    const areaHeight = this.scale.height - 140;
 
-    // Subtle haze behind dice
-    this.add.rectangle(areaWidth / 2, areaHeight / 2 + 10, areaWidth - 40, areaHeight - 140, 0x02111d, 0.4);
-
-    this.diceManager = new PhaserDiceManager(this, (idx) => this.handleDieButtonClick(idx));
-    this.diceManager.createDiceSet(areaWidth, areaHeight - 100);
+    this.diceManager = new PhaserDiceManager(this, (idx) => this.handleDieToggle(idx));
+    this.diceManager.createDiceSet(areaWidth, areaHeight);
   }
 
   private setupDiceState() {
@@ -122,47 +78,16 @@ export class MainScene extends Phaser.Scene {
     diceState.reset();
   }
 
-  private createDieButtons(panelX: number, panelWidth: number, btnY: number) {
-    const btnWidth = panelWidth - 120;
-    const btnHeight = 46;
-    const btnX = panelX + 20 + btnWidth / 2;
-    const startY = btnY + 70;
-    const gap = 12;
-
-    for (let i = 0; i < 5; i++) {
-      const y = startY + i * (btnHeight + gap);
-      const bg = this.add
-        .rectangle(btnX, y, btnWidth, btnHeight, 0x0f2636, 0.8)
-        .setStrokeStyle(2, 0x7ad3ff, 0.6)
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true });
-
-      const label = this.add
-        .text(bg.x, bg.y, this.formatDieLabel(i), {
-          fontFamily: 'monospace',
-          fontSize: '18px',
-          color: '#e7edf2'
-        })
-        .setOrigin(0.5);
-
-      bg.on('pointerover', () => this.setDieButtonStyle(i, true));
-      bg.on('pointerout', () => this.setDieButtonStyle(i, false));
-      bindPress(bg, () => this.handleDieButtonClick(i));
-
-      this.dieButtons.push({ bg, label });
-      this.setDieButtonStyle(i, false);
-    }
+  private rollButtonText() {
+    if (this.rolling) return 'ROLLING...';
+    return this.rollsLeft > 0 ? `ROLL (${this.rollsLeft})` : 'NO ROLLS LEFT';
   }
 
-  private updateHeaderText() {
-    this.roundText.setText(`Round ${this.currentRound}  |  Rolls left: ${this.rollsLeft}`);
-  }
-
-  private updateDiceText() {
-    const hasValues = this.diceValues.some((v) => typeof v === 'number');
-    const printable = this.diceValues.map((v) => (typeof v === 'number' ? v.toString() : '-'));
-    console.debug('[scene] updateDiceText', { hasValues, printable });
-    this.diceText.setText(hasValues ? `Dice: ${printable.join(' ')}` : 'Dice: - - - - -');
+  private updateRollButton() {
+    if (!this.rollButton || !this.rollLabel) return;
+    const disabled = this.rollsLeft <= 0 || this.rolling;
+    this.rollLabel.setText(this.rollButtonText());
+    this.rollButton.setAlpha(disabled ? 0.7 : 1);
   }
 
   private async handleRollClick() {
@@ -184,7 +109,7 @@ export class MainScene extends Phaser.Scene {
 
     this.rolling = true;
     this.rollsLeft -= 1;
-    this.updateHeaderText();
+    this.updateRollButton();
 
     try {
       const values = await this.diceManager.roll(unlockedIndices);
@@ -203,37 +128,11 @@ export class MainScene extends Phaser.Scene {
       this.addToast('Roll failed');
     } finally {
       this.rolling = false;
+      this.updateRollButton();
     }
   }
 
-  private updateDieButtons() {
-    this.dieButtons.forEach((btn, idx) => {
-      btn.label.setText(this.formatDieLabel(idx));
-      this.setDieButtonStyle(idx, false);
-    });
-  }
-
-  private setDieButtonStyle(idx: number, hovered: boolean) {
-    const btn = this.dieButtons[idx];
-    if (!btn) return;
-    const locked = this.diceLocks[idx];
-    const fill = locked ? (hovered ? 0x223447 : 0x1a2b3b) : hovered ? 0x15415a : 0x0f2636;
-    const alpha = locked ? 0.95 : hovered ? 0.9 : 0.8;
-    const strokeColor = locked ? 0xffc857 : 0x7ad3ff;
-    const strokeAlpha = locked ? 0.9 : hovered ? 0.8 : 0.6;
-    const strokeWidth = locked ? 3 : 2;
-    btn.bg.setFillStyle(fill, alpha);
-    btn.bg.setStrokeStyle(strokeWidth, strokeColor, strokeAlpha);
-  }
-
-  private formatDieLabel(idx: number) {
-    const value = this.diceValues[idx];
-    const locked = this.diceLocks[idx];
-    const label = typeof value === 'number' ? value : '-';
-    return locked ? `Die ${idx + 1}: ${label} [LOCK]` : `Die ${idx + 1}: ${label}`;
-  }
-
-  private handleDieButtonClick(idx: number) {
+  private handleDieToggle(idx: number) {
     const lockedBefore = this.diceLocks[idx];
     diceState.toggleLock(idx);
     const lockedAfter = !lockedBefore;
