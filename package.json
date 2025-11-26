@@ -13,6 +13,7 @@
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@3d-dice/dice-box": "^1.1.4",
     "phaser": "^3.70.0"
   },
   "devDependencies": {

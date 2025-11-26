@@ -1,31 +1,42 @@
 import './style.css';
 import Phaser from 'phaser';
+import DiceBox from '@3d-dice/dice-box';
 import { phaserConfig } from './phaser.config';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MainScene } from './scenes/MainScene';
 import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
-import { setupLandscapeLock, tryLockScreenOrientation } from './shared/LandscapeLock';
 
-// Register Phaser scenes
-phaserConfig.scene = [BootScene, PreloadScene, MainScene];
+type DiceGameConfig = Phaser.Types.Core.GameConfig & { diceBox?: DiceBox };
 
-// Block portrait on mobile and wake the game only in landscape
-const landscapeLock = setupLandscapeLock();
+async function boot() {
+  // Initialize Dice-Box in its own HTML container so the scene can request rolls
+  let diceBox: DiceBox | undefined;
+  try {
+    diceBox = new DiceBox({
+      assetPath: `${import.meta.env.BASE_URL}assets/dice-box/`,
+      container: '#dice-box',
+      id: 'dice-canvas',
+      scale: 5,
+      gravity: 1
+    });
+    await diceBox.init();
+  } catch (err) {
+    console.error('Failed to initialize Dice-Box', err);
+  }
 
-// Launch game
-const game = new Phaser.Game(phaserConfig);
-landscapeLock.bindGame(game);
+  const config: DiceGameConfig = {
+    ...phaserConfig,
+    scene: [BootScene, PreloadScene, MainScene],
+    diceBox
+  };
 
-// Attempt to request a landscape lock after the first user interaction (best-effort)
-window.addEventListener(
-  'pointerdown',
-  () => {
-    tryLockScreenOrientation();
-  },
-  { once: true }
-);
+  // Launch game
+  const game = new Phaser.Game(config);
+}
+
+boot().catch((err) => console.error('Failed to bootstrap game', err));
 
 // PWA: set up update prompt when a new SW is available
 setupPWAUpdatePrompt(() => {

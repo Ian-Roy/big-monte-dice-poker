@@ -2,13 +2,13 @@ import Phaser from 'phaser';
 
 export const phaserConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  parent: 'app',
-  backgroundColor: '#0b1020',
+  parent: 'phaser-root',
+  backgroundColor: '#062335',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 800,
-    height: 450
+    width: 1024,
+    height: 768
   },
   fps: {
     target: 60,
@@ -16,7 +16,7 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
   },
   render: {
     pixelArt: true,
-    antialias: false
+    antialias: true
   },
   physics: {
     default: 'arcade',
