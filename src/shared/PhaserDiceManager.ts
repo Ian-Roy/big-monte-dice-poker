@@ -1,128 +1,123 @@
 import Phaser from 'phaser';
 import { bindPress } from './PointerPress';
 
-type DieVisual = {
+type LockSlot = {
   container: Phaser.GameObjects.Container;
+  bg: Phaser.GameObjects.Rectangle;
   face: Phaser.GameObjects.Image;
-  lockIcon: Phaser.GameObjects.Text;
-  hitArea: Phaser.GameObjects.Rectangle;
+  lockTag: Phaser.GameObjects.Text;
+  heldOverlay: Phaser.GameObjects.Rectangle;
   index: number;
 };
 
 export class PhaserDiceManager {
-  private dice: DieVisual[] = [];
-  private rolling = false;
+  private slots: LockSlot[] = [];
+  private rollPulse?: Phaser.Tweens.Tween;
   private onToggleLock?: (idx: number) => void;
+  private readonly debug: boolean;
 
   constructor(private scene: Phaser.Scene, onToggleLock?: (idx: number) => void) {
     this.onToggleLock = onToggleLock;
+    this.debug = !!import.meta.env.DEV;
   }
 
-  createDiceSet(areaWidth: number, areaHeight: number) {
+  createLockRow(areaWidth: number, options: { rowY: number; top?: number }) {
     this.generateDieTextures();
-    const originX = areaWidth / 2;
-    const originY = areaHeight / 2 + 30;
-    const spacing = 130;
-    const positions = [
-      { x: originX - spacing, y: originY - spacing / 2 },
-      { x: originX, y: originY - spacing },
-      { x: originX + spacing, y: originY - spacing / 2 },
-      { x: originX - spacing / 2, y: originY + spacing / 2 },
-      { x: originX + spacing / 2, y: originY + spacing / 2 }
-    ];
+    const centerX = areaWidth / 2;
+    const rowY = options.rowY;
+    const slotWidth = Math.min(130, areaWidth * 0.16);
+    const slotHeight = 96;
+    const spacing = slotWidth + 16;
+    const startX = centerX - spacing * 2;
 
-    positions.forEach((pos, idx) => {
-      const face = this.scene.add.image(pos.x, pos.y, 'die-face-blank').setScale(1.05).setDepth(5);
-      const lockIcon = this.scene.add
-        .text(pos.x, pos.y - 42, 'LOCKED', {
+    for (let idx = 0; idx < 5; idx++) {
+      const x = startX + idx * spacing;
+      const bg = this.scene.add
+        .rectangle(x, rowY, slotWidth, slotHeight, 0x0f2636, 0.9)
+        .setStrokeStyle(2, 0x7ad3ff, 0.7)
+        .setDepth(6);
+      const heldOverlay = this.scene.add
+        .rectangle(x, rowY, slotWidth, slotHeight, 0x22c55e, 0.12)
+        .setVisible(false)
+        .setDepth(6);
+      const face = this.scene.add
+        .image(x, rowY - 8, 'die-face-blank')
+        .setDisplaySize(62, 62)
+        .setDepth(7);
+      const lockTag = this.scene.add
+        .text(x, rowY + slotHeight / 2 - 16, 'Unlocked', {
           fontFamily: 'monospace',
-          fontSize: '12px',
-          color: '#ffc857'
+          fontSize: '13px',
+          color: '#b7e2ff'
         })
-        .setOrigin(0.5)
-        .setAlpha(0);
+        .setOrigin(0.5, 0.5)
+        .setDepth(7);
+
       const hitArea = this.scene
-        .add.rectangle(pos.x, pos.y, sizeForHit(), sizeForHit(), 0xffffff, 0)
-        .setInteractive({
-          useHandCursor: true
-        });
+        .add.rectangle(x, rowY, slotWidth, slotHeight, 0xffffff, 0)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(8);
       bindPress(hitArea, () => {
         if (this.onToggleLock) this.onToggleLock(idx);
       });
 
-      const container = this.scene.add.container(0, 0, [face, lockIcon, hitArea]);
-      container.setDepth(5 + idx);
-      this.dice.push({ container, face, lockIcon, hitArea, index: idx });
-    });
+      if (this.debug) {
+        hitArea.setStrokeStyle(1, 0x7ad3ff, 0.15);
+      }
 
-    function sizeForHit() {
-      return 110;
+      const container = this.scene.add.container(0, 0, [bg, heldOverlay, face, lockTag, hitArea]);
+      container.setDepth(6 + idx * 0.01);
+      this.slots.push({ container, bg, face, lockTag, heldOverlay, index: idx });
     }
-  }
-
-  async roll(unlockedIndices: number[]): Promise<number[]> {
-    if (this.rolling) return [];
-    this.rolling = true;
-    const results: number[] = [];
-    const animations: Promise<void>[] = [];
-
-    unlockedIndices.forEach((idx) => {
-      const die = this.dice[idx];
-      if (!die) return;
-      const target = Phaser.Math.Between(1, 6);
-      results.push(target);
-
-      animations.push(
-        new Promise((resolve) => {
-          const jitter = this.scene.time.addEvent({
-            delay: 90,
-            repeat: 6,
-            callback: () => {
-              const v = Phaser.Math.Between(1, 6);
-              die.face.setTexture(`die-face-${v}`);
-              die.face.setAngle(Phaser.Math.Between(-15, 15));
-            }
-          });
-
-          this.scene.tweens.add({
-            targets: die.face,
-            scale: { from: 1, to: 1.08 },
-            yoyo: true,
-            duration: 120,
-            repeat: 3
-          });
-
-          this.scene.time.delayedCall(750, () => {
-            die.face.setTexture(`die-face-${target}`);
-            die.face.setAngle(0);
-            resolve();
-          });
-        })
-      );
-    });
-
-    await Promise.all(animations);
-    this.rolling = false;
-    return results;
   }
 
   updateState(values: Array<number | null>, locks: boolean[]) {
     values.forEach((v, idx) => {
-      const die = this.dice[idx];
-      if (!die) return;
-      if (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 6) {
-        die.face.setTexture(`die-face-${v}`);
-      } else {
-        die.face.setTexture('die-face-blank');
-      }
+      const slot = this.slots[idx];
+      if (!slot) return;
       const locked = !!locks[idx];
-      die.lockIcon.setAlpha(locked ? 1 : 0);
-      die.face.setTint(locked ? 0xffd27f : 0xffffff);
+      if (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 6) {
+        slot.face.setTexture(`die-face-${v}`);
+      } else {
+        slot.face.setTexture('die-face-blank');
+      }
+      slot.bg.setFillStyle(locked ? 0x0f331f : 0x0f2636, 0.92);
+      slot.bg.setStrokeStyle(2, locked ? 0x22c55e : 0x7ad3ff, locked ? 0.95 : 0.7);
+      slot.lockTag.setText(locked ? 'Held' : 'Unlocked');
+      slot.lockTag.setColor(locked ? '#8ef0b2' : '#b7e2ff');
+      slot.heldOverlay.setVisible(locked);
+      // Keep position/scale fixed to avoid jarring lock movement
+      slot.container.setScale(1);
     });
   }
 
+  pulseRollStart() {
+    if (this.rollPulse) {
+      this.rollPulse.stop();
+      this.rollPulse = undefined;
+    }
+    if (!this.slots.length) return;
+    this.rollPulse = this.scene.tweens.add({
+      targets: this.slots.map((slot) => slot.bg),
+      scale: { from: 1.0, to: 1.05 },
+      duration: 180,
+      yoyo: true,
+      repeat: 1,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  setRolling(isRolling: boolean) {
+    if (isRolling) {
+      this.pulseRollStart();
+    } else if (this.rollPulse) {
+      this.rollPulse.stop();
+      this.rollPulse = undefined;
+    }
+  }
+
   private generateDieTextures() {
-    const size = 96;
+    const size = 88;
     const center = size / 2;
     const offset = Math.floor(size * 0.24); // pip offset from center
     const pipRadius = 7;

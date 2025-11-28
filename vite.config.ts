@@ -11,7 +11,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       injectRegister: "auto",
       workbox: {
-        globPatterns: ["**/*.{js,css,html,woff2,png,svg,ogg,wav,mp3,json}"],
+        globPatterns: [
+          "**/*.{js,css,html,woff2,png,svg,ogg,wav,mp3,json,wasm,jpg,jpeg}"
+        ],
         navigateFallback: "index.html",
         clientsClaim: true,
         skipWaiting: false, // we'll prompt the user to reload

@@ -3,12 +3,12 @@ import Phaser from 'phaser';
 export const phaserConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'phaser-root',
-  backgroundColor: '#062335',
+  backgroundColor: 'rgba(0,0,0,0)',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: 1024,
-    height: 1500
+    height: 1700
   },
   input: {
     activePointers: 3,

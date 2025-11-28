@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { diceState, DiceStateEvent, type DiceSnapshot, type DiceValues, type DiceLocks } from '../shared/DiceState';
+import { type DiceSnapshot, type DiceValues, type DiceLocks, emptySnapshot, snapshotFromService } from '../shared/DiceState';
+import { DiceService, type DiceServiceSnapshot } from '../shared/DiceService';
 import { PhaserDiceManager } from '../shared/PhaserDiceManager';
 import { bindPress } from '../shared/PointerPress';
 
@@ -42,8 +43,12 @@ export class MainScene extends Phaser.Scene {
   private rollsLeft = 3;
   private diceValues: DiceValues = [null, null, null, null, null];
   private diceLocks: DiceLocks = [false, false, false, false, false];
+  private diceSnapshot: DiceSnapshot = emptySnapshot();
   private rolling = false;
   private diceManager!: PhaserDiceManager;
+  private diceService?: DiceService;
+  private diceServiceUnsub?: () => void;
+  private diceServiceReady = false;
   private rollButton!: Phaser.GameObjects.Rectangle;
   private rollLabel!: Phaser.GameObjects.Text;
   private infoText!: Phaser.GameObjects.Text;
@@ -55,9 +60,12 @@ export class MainScene extends Phaser.Scene {
   private readonly scoreboardHeaderGap = 10;
   private readonly scoreboardSectionGap = 24;
   private readonly scoreboardBonusGap = 12;
+  private scoreboardTop = 0;
   private scoreboardCenterY = 0;
   private rollButtonY = 0;
   private diceAreaHeight = 0;
+  private diceAreaTop = 32;
+  private lockRowY = 0;
   private scoreRows: Map<CategoryKey, ScoreRow> = new Map();
   private scoreCategories: ScoreCategory[] = [];
   private maxRounds = 13;
@@ -73,12 +81,19 @@ export class MainScene extends Phaser.Scene {
     'chance'
   ];
 
-  private handleDiceStateUpdate = ({ values, locks }: DiceSnapshot) => {
-    console.debug('[scene] dice state change', { values, locks });
-    this.diceValues = values;
-    this.diceLocks = locks;
-    this.diceManager.updateState(values, locks);
+  private handleDiceServiceUpdate = (snapshot: DiceServiceSnapshot) => {
+    const mapped: DiceSnapshot = snapshotFromService(snapshot);
+    console.debug('[scene] dice service snapshot', mapped);
+    this.diceSnapshot = mapped;
+    this.diceValues = mapped.values;
+    this.diceLocks = mapped.locks;
+    this.rollsLeft = Math.max(0, 3 - mapped.rollsThisRound);
+    this.rolling = mapped.isRolling;
+    this.diceManager.updateState(mapped.values, mapped.locks);
+    this.diceManager.setRolling(mapped.isRolling);
     this.refreshScoreRows();
+    this.updateRollButton();
+    this.updateInfoText();
   };
 
   constructor() {
@@ -88,10 +103,11 @@ export class MainScene extends Phaser.Scene {
   }
 
   create() {
+    this.cameras.main.setBackgroundColor(0x00000000);
     this.createLayout();
     this.createDiceArea();
     this.createScoreBoard();
-    this.setupDiceState();
+    this.setupDiceService();
     this.updateRollButton();
     this.updateInfoText();
   }
@@ -119,29 +135,37 @@ export class MainScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
 
-    this.scoreboardHeight = this.computeScoreboardHeight(h);
-    this.scoreboardCenterY = h - this.scoreboardHeight / 2 - 12;
-    this.rollButtonY = this.scoreboardCenterY - this.scoreboardHeight / 2 - 40;
-    this.diceAreaHeight = Math.max(320, this.rollButtonY - 40);
+    this.diceAreaTop = 18;
+    const maxDiceAreaHeight = Math.min(520, h * 0.44);
+    this.diceAreaHeight = Math.max(340, maxDiceAreaHeight);
+    this.lockRowY = this.diceAreaTop + this.diceAreaHeight + 68;
+    this.rollButtonY = this.lockRowY + 68;
+    const diceAreaWidth = w * 0.9;
+    const diceAreaLeft = (w - diceAreaWidth) / 2;
+    // Keep Dice-Box slightly inset so dice visuals stay inside the framed line (clip handles overflow)
+    const diceAreaInset = 10;
 
-    this.add.rectangle(w / 2, 42, w * 0.9, 70, 0x041927).setOrigin(0.5);
-    this.infoText = this.add.text(24, 22, '', {
-      fontFamily: 'monospace',
-      fontSize: '20px',
-      color: '#e7edf2'
-    });
+    this.scoreboardTop = this.rollButtonY + 82;
+    this.scoreboardHeight = this.computeScoreboardHeight(h, this.scoreboardTop);
+    this.scoreboardCenterY = this.scoreboardTop + this.scoreboardHeight / 2;
 
-    this.add.rectangle(
-      w / 2,
-      this.diceAreaHeight / 2 + 32,
-      w * 0.85,
-      this.diceAreaHeight,
-      0x02111d,
-      0.42
-    );
+    this.add.rectangle(w / 2, this.rollButtonY, w * 0.9, 64, 0x041927, 0.82).setOrigin(0.5);
+    this.infoText = this.add
+      .text(24, this.rollButtonY, '', {
+        fontFamily: 'monospace',
+        fontSize: '20px',
+        color: '#e7edf2'
+      })
+      .setOrigin(0, 0.5);
+
+    const diceAreaCenterY = this.diceAreaTop + this.diceAreaHeight / 2;
+    this.add
+      .rectangle(w / 2, diceAreaCenterY, diceAreaWidth, this.diceAreaHeight, 0x02111d, 0)
+      .setStrokeStyle(2, 0x0c5d88, 0.25);
+    this.add.rectangle(w / 2, this.lockRowY, diceAreaWidth, 120, 0x031c2a, 0.3);
 
     this.rollButton = this.add
-      .rectangle(w / 2, this.rollButtonY, 240, 70, 0x1f7bb6, 0.98)
+      .rectangle(w / 2, this.rollButtonY, 240, 64, 0x1f7bb6, 0.98)
       .setStrokeStyle(3, 0x7ad3ff)
       .setInteractive({ useHandCursor: true })
       .setDepth(10);
@@ -155,9 +179,19 @@ export class MainScene extends Phaser.Scene {
       .setDepth(11);
 
     bindPress(this.rollButton, () => this.handleRollClick());
+
+    // Match the Dice-Box container to the dice area bounds so the 3D canvas aligns
+    const diceBoxEl = document.getElementById('dice-box');
+    if (diceBoxEl) {
+      diceBoxEl.style.top = `${this.diceAreaTop + diceAreaInset}px`;
+      diceBoxEl.style.height = `${Math.max(0, this.diceAreaHeight - diceAreaInset * 2)}px`;
+      diceBoxEl.style.left = `${diceAreaLeft + diceAreaInset}px`;
+      diceBoxEl.style.right = '';
+      diceBoxEl.style.width = `${Math.max(0, diceAreaWidth - diceAreaInset * 2)}px`;
+    }
   }
 
-  private computeScoreboardHeight(sceneHeight: number) {
+  private computeScoreboardHeight(sceneHeight: number, offsetTop: number) {
     const headerBlock = this.scoreboardHeaderHeight + this.scoreboardHeaderGap;
     const upperRowsHeight = this.scoreboardRowHeight * this.upperKeys.length;
     const lowerRowsHeight = this.scoreboardRowHeight * this.lowerKeys.length;
@@ -174,9 +208,9 @@ export class MainScene extends Phaser.Scene {
       lowerRowsHeight +
       this.scoreboardBottomPadding;
 
-    const minHeight = 900;
-    const maxHeight = sceneHeight - 40;
-    return Math.min(Math.max(baseHeight, minHeight), Math.max(minHeight, maxHeight));
+    const available = Math.max(520, sceneHeight - offsetTop - 20);
+    const targetMin = Math.min(900, available);
+    return Math.min(Math.max(baseHeight, targetMin), available);
   }
 
   private createScoreBoard() {
@@ -297,29 +331,43 @@ export class MainScene extends Phaser.Scene {
 
   private createDiceArea() {
     const areaWidth = this.scale.width;
-    const areaHeight = Math.max(240, this.rollButtonY - 50);
+    const areaHeight = this.diceAreaHeight;
 
     this.diceManager = new PhaserDiceManager(this, (idx) => this.handleDieToggle(idx));
-    this.diceManager.createDiceSet(areaWidth, areaHeight);
+    this.diceManager.createLockRow(areaWidth, { rowY: this.lockRowY });
   }
 
-  private setupDiceState() {
-    console.debug('[scene] setupDiceState: register listener');
-    diceState.on(DiceStateEvent.Change, this.handleDiceStateUpdate);
+  private setupDiceService() {
+    console.debug('[scene] setupDiceService: register listener');
+    this.diceService = new DiceService('#dice-box');
+    this.diceServiceUnsub = this.diceService.onChange((snapshot) => this.handleDiceServiceUpdate(snapshot));
 
-    // Clean up listeners when the scene is torn down
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      diceState.off(DiceStateEvent.Change, this.handleDiceStateUpdate);
-    });
-    this.events.once(Phaser.Scenes.Events.DESTROY, () => {
-      diceState.off(DiceStateEvent.Change, this.handleDiceStateUpdate);
-    });
+    const cleanup = () => this.teardownDiceService();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
+    this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
 
-    // Initialize UI with current values (resets to blanks and emits a change)
-    diceState.reset();
+    this.diceService
+      .init()
+      .then(() => {
+        this.diceServiceReady = true;
+        this.diceService?.startNewRound();
+      })
+      .catch((err) => {
+        console.error('[scene] DiceService init failed', err);
+        this.addToast('Dice visuals failed to load');
+      });
+  }
+
+  private teardownDiceService() {
+    this.diceServiceUnsub?.();
+    this.diceServiceUnsub = undefined;
+    this.diceService?.dispose();
+    this.diceService = undefined;
+    this.diceServiceReady = false;
   }
 
   private rollButtonText() {
+    if (!this.diceServiceReady) return 'LOADING...';
     if (this.hasCompletedGame()) return 'GAME COMPLETE';
     if (this.rolling) return 'ROLLING...';
     return this.rollsLeft > 0 ? `ROLL (${this.rollsLeft})` : 'NO ROLLS LEFT';
@@ -327,7 +375,8 @@ export class MainScene extends Phaser.Scene {
 
   private updateRollButton() {
     if (!this.rollButton || !this.rollLabel) return;
-    const disabled = this.rollsLeft <= 0 || this.rolling || this.hasCompletedGame();
+    const disabled =
+      !this.diceServiceReady || this.rollsLeft <= 0 || this.rolling || this.hasCompletedGame();
     this.rollLabel.setText(this.rollButtonText());
     this.rollButton.setAlpha(disabled ? 0.7 : 1);
   }
@@ -353,7 +402,15 @@ export class MainScene extends Phaser.Scene {
   }
 
   private async handleRollClick() {
-    console.debug('[scene] handleRollClick', { rolling: this.rolling, rollsLeft: this.rollsLeft });
+    console.debug('[scene] handleRollClick', {
+      rolling: this.rolling,
+      rollsLeft: this.rollsLeft,
+      serviceReady: this.diceServiceReady
+    });
+    if (!this.diceService || !this.diceServiceReady) {
+      this.addToast('Dice loading, please wait');
+      return;
+    }
     if (this.rolling) return;
     if (this.hasCompletedGame()) {
       this.addToast('All categories scored!');
@@ -368,34 +425,21 @@ export class MainScene extends Phaser.Scene {
       .map((locked, idx) => (!locked ? idx : -1))
       .filter((idx) => idx >= 0);
 
-    if (!unlockedIndices.length) {
+    if (!unlockedIndices.length && this.diceSnapshot.rollsThisRound > 0) {
       this.addToast('All dice locked');
       return;
     }
 
-    this.rolling = true;
-    this.rollsLeft -= 1;
-    this.updateRollButton();
-    this.updateInfoText();
-
     try {
-      const values = await this.diceManager.roll(unlockedIndices);
-      if (values.length) {
-        diceState.applyRollResults(values);
-        if (values.length < unlockedIndices.length) {
-          console.warn('[scene] fewer roll values than unlocked dice', { values, unlockedIndices });
-        }
+      this.diceManager.pulseRollStart();
+      if (this.diceSnapshot.rollsThisRound === 0) {
+        await this.diceService.rollAll();
       } else {
-        console.warn('[scene] roll produced no values');
+        await this.diceService.rerollUnheld();
       }
-      console.info('[scene] roll result', { values });
     } catch (err) {
       console.error('Dice roll failed', err);
       this.addToast('Roll failed');
-    } finally {
-      this.rolling = false;
-      this.updateRollButton();
-      this.updateInfoText();
     }
   }
 
@@ -569,7 +613,7 @@ export class MainScene extends Phaser.Scene {
 
     this.currentRound = Math.min(this.currentRound + 1, this.maxRounds);
     this.rollsLeft = 3;
-    diceState.reset();
+    this.diceService?.startNewRound();
     this.updateRollButton();
     this.updateInfoText();
   }
@@ -700,8 +744,12 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handleDieToggle(idx: number) {
+    if (!this.diceServiceReady || !this.diceService) {
+      this.addToast('Dice loading, please wait');
+      return;
+    }
     const lockedBefore = this.diceLocks[idx];
-    diceState.toggleLock(idx);
+    this.diceService.toggleHold(idx);
     const lockedAfter = !lockedBefore;
     const value = this.diceValues[idx];
     const statusText = lockedAfter ? 'locked' : 'unlocked';
