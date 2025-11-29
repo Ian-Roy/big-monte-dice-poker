@@ -1,5 +1,14 @@
 <template>
-  <div id="app-shell">
+  <div id="app-shell" ref="shellEl">
+    <DiceViewport :bounds="diceLayerBounds" :layer-mode="diceLayerMode" />
+
+    <div ref="controlsEl" class="top-controls">
+      <button type="button" class="layer-toggle" @click="toggleDiceLayer">
+        {{ diceLayerMode === 'over' ? 'Hide dice layer (under UI)' : 'Show dice layer (over UI)' }}
+      </button>
+      <RollActionButton :on-force-show="showDiceLayer" />
+    </div>
+
     <header class="hero">
       <div class="title">
         <div class="eyebrow">Big Monte</div>
@@ -8,7 +17,6 @@
     </header>
     <main class="layout">
       <section class="pane">
-        <DiceViewport />
         <LockRow />
         <RollBar />
       </section>
@@ -29,11 +37,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import DiceServiceBridge from './components/DiceServiceBridge.vue';
 import DiceViewport from './components/ui/DiceViewport.vue';
 import LockRow from './components/ui/LockRow.vue';
+import RollActionButton from './components/ui/RollActionButton.vue';
 import RollBar from './components/ui/RollBar.vue';
 import ScoreTable from './components/ui/ScoreTable.vue';
 import ConfirmDialog from './components/ui/ConfirmDialog.vue';
@@ -44,8 +53,23 @@ import { useGameStore } from './stores/gameStore';
 // Initialize the store now so upcoming Vue components can subscribe to state.
 const store = useGameStore();
 
+type DiceLayerBounds = {
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+};
+
+const shellEl = ref<HTMLElement | null>(null);
+const controlsEl = ref<HTMLElement | null>(null);
+const diceLayerBounds = ref<DiceLayerBounds | null>(null);
+const diceLayerMode = ref<'over' | 'under'>('over');
+const lastDiceBounds = ref<DiceLayerBounds | null>(null);
+const handleWindowResize = () => updateDiceLayerBounds(true);
+
 const pendingCategory = ref<CategoryKey | null>(null);
 const toasts = ref<string[]>([]);
+let resizeObserver: ResizeObserver | null = null;
 
 const dialogTitle = computed(() => {
   if (!pendingCategory.value) return '';
@@ -94,6 +118,107 @@ function confirmScore() {
   }
 }
 
+function toggleDiceLayer() {
+  diceLayerMode.value = diceLayerMode.value === 'over' ? 'under' : 'over';
+}
+
+function showDiceLayer() {
+  diceLayerMode.value = 'over';
+}
+
+function updateDiceLayerBounds(triggeredByResize = false) {
+  const shell = shellEl.value;
+  if (!shell) return;
+  const rect = shell.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const controlsHeight = controlsEl.value?.getBoundingClientRect().height ?? 0;
+  const safeTop = controlsHeight + 8;
+  const isMobile = window.innerWidth <= 900;
+
+  let nextBounds: DiceLayerBounds;
+
+  if (isMobile) {
+    const width = window.innerWidth;
+    const top = safeTop;
+    const height = Math.max(window.innerHeight - safeTop, 360);
+    nextBounds = {
+      width,
+      height,
+      left: 0,
+      top
+    };
+  } else {
+    const targetWidth = Math.min(window.innerWidth, rect.width);
+    const left =
+      targetWidth < window.innerWidth ? rect.left + (rect.width - targetWidth) / 2 : 0;
+    const top = Math.max(rect.top, 0) + safeTop;
+    const availableHeight = Math.max(rect.height - safeTop, 0);
+    const viewportHeight = Math.max(window.innerHeight - Math.max(rect.top, 0) - safeTop, 0);
+    const targetHeight = Math.max(Math.min(availableHeight, viewportHeight), 420);
+    nextBounds = {
+      width: targetWidth,
+      height: targetHeight,
+      left: Math.max(left, 0),
+      top
+    };
+  }
+
+  const sizeChanged =
+    !lastDiceBounds.value ||
+    nextBounds.width !== lastDiceBounds.value.width ||
+    nextBounds.height !== lastDiceBounds.value.height;
+
+  diceLayerBounds.value = nextBounds;
+  lastDiceBounds.value = nextBounds;
+
+  if (sizeChanged && !triggeredByResize) {
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }
+
+  if (sizeChanged) {
+    const payload = {
+      nextBounds,
+      shell: {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        top: Math.round(rect.top),
+        left: Math.round(rect.left)
+      },
+      window: {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio
+      }
+    };
+    console.info('[DiceLayer] bounds change', payload);
+    console.info(
+      '[DiceLayer] bounds summary',
+      `layer ${nextBounds.width}x${nextBounds.height} @ (${nextBounds.left},${nextBounds.top}) | shell ${payload.shell.width}x${payload.shell.height} @ (${payload.shell.left},${payload.shell.top}) | window ${payload.window.innerWidth}x${payload.window.innerHeight} dpr=${payload.window.devicePixelRatio}`
+    );
+  }
+}
+
+onMounted(() => {
+  nextTick(() => {
+    updateDiceLayerBounds();
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => updateDiceLayerBounds());
+      if (shellEl.value) resizeObserver.observe(shellEl.value);
+      if (controlsEl.value) resizeObserver.observe(controlsEl.value);
+    }
+  });
+  window.addEventListener('resize', handleWindowResize);
+  window.addEventListener('scroll', updateDiceLayerBounds, { passive: true });
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener('scroll', updateDiceLayerBounds);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+});
+
 watch(
   () => store.lastError,
   (val) => {
@@ -111,14 +236,52 @@ watch(
 
 <style scoped>
 #app-shell {
+  position: relative;
   max-width: 1100px;
   margin: 0 auto;
   padding: 12px 12px 40px;
   color: #e7edf2;
+  min-height: 100vh;
+}
+
+.top-controls {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 0 10px;
+  backdrop-filter: blur(6px);
+}
+
+.layer-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(122, 211, 255, 0.5);
+  color: #e7edf2;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  min-width: 150px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.layer-toggle:hover {
+  border-color: rgba(146, 227, 255, 0.8);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.layer-toggle:active {
+  transform: translateY(1px);
 }
 
 .hero {
   padding: 12px 6px;
+  position: relative;
+  z-index: 6;
 }
 
 .title .eyebrow {
@@ -145,5 +308,7 @@ watch(
   border-radius: 16px;
   padding: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 6;
 }
 </style>

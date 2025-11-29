@@ -53,6 +53,14 @@ Practical notes for integrating and operating `@3d-dice/dice-box` in this projec
 - **Dice too small/large**: tweak `scale` in DiceService; if clipping occurs, increase `DiceViewport` height or adjust camera via Dice-Box config if needed.
 - **Offline failures**: confirm Workbox glob includes `wasm/png/jpg/json`; Dice-Box needs `ammo.wasm` and theme textures cached.
 
+## Recent Integration Notes (2024-11)
+- Canvas sizing: let Dice-Box manage the OffscreenCanvas backing store. Avoid setting `canvas.width/height` after init or you will hit `InvalidStateError: Cannot resize canvas after call to transferControlToOffscreen()`.
+- Visual area: size/position the injected canvas via CSS (e.g., `:global(#dice-box canvas)` at 110% height with a small negative top) rather than resizing the element directly. This keeps dice visible without fighting OffscreenCanvas.
+- Dice scale: current `scale` is `5` to fit a full-height mobile viewport. Adjust up/down in `DiceService` if you change canvas oversizing.
+- Bounds/viewport: the overlay is fixed to the viewport on mobile and capped to the app width on desktop, reserving only the top controls as a safe zone. Dice can roll over the scorecard/locks.
+- Debugging: DiceService logs layer/container/canvas rects and window metrics on init and around rolls (`viewport summary` lines). Use these to verify the canvas matches the overlay.
+- Layer control: a toggle moves the dice layer above/below the Vue UI; roll button forces the layer visible so rolls aren’t hidden.
+
 ## Quick Commands
 - Generate sprites: `yarn gen:dice-sprites`
 - Run tests: `yarn test:run`

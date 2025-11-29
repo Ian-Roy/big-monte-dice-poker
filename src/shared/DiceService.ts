@@ -27,8 +27,10 @@ export class DiceService {
   private disposed = false;
   private listeners: ChangeListener[] = [];
   private pendingRerollIndices: number[] = [];
+  private containerSelector: string;
 
   constructor(containerSelector = '#dice-box') {
+    this.containerSelector = containerSelector;
     const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
     const assetPath = `${base}assets/dice-box/`;
     console.info('[DiceService] configuring DiceBox', { assetPath, containerSelector });
@@ -36,7 +38,7 @@ export class DiceService {
     this.diceBox = new DiceBox({
       assetPath,
       container: containerSelector,
-      scale: 10, // make dice render larger
+      scale: 5, // slightly smaller to fit full-height viewport
       delay: 6
     });
 
@@ -49,6 +51,7 @@ export class DiceService {
     console.info('[DiceService] init start');
     await this.diceBox.init();
     console.info('[DiceService] init complete');
+    this.logViewportMetrics('init');
     this.emitChange();
   }
 
@@ -93,6 +96,7 @@ export class DiceService {
 
   async rollAll() {
     if (this.guardRollStart('rollAll')) return;
+    this.logViewportMetrics('before-rollAll');
     this.rollsThisRound += 1;
     this.rolling = true;
     this.pendingRerollIndices = [];
@@ -121,6 +125,7 @@ export class DiceService {
     }
 
     this.rollsThisRound += 1;
+    this.logViewportMetrics('before-reroll');
     this.rolling = true;
     this.emitChange();
     const targets = toReroll
@@ -266,6 +271,7 @@ export class DiceService {
     this.pendingRerollIndices = [];
     this.rolling = false;
     console.debug('[DiceService] roll complete -> snapshot', this.getSnapshot());
+    this.logViewportMetrics('roll-complete');
     this.emitChange();
   }
 
@@ -298,5 +304,77 @@ export class DiceService {
   private emitChange() {
     const snapshot = this.getSnapshot();
     this.listeners.forEach((cb) => cb(snapshot));
+  }
+
+  private logViewportMetrics(tag: string) {
+    if (typeof document === 'undefined') return;
+    const container = document.querySelector(this.containerSelector) as HTMLElement | null;
+    const canvas = container?.querySelector('canvas') as HTMLCanvasElement | null;
+    const containerRect = container?.getBoundingClientRect();
+    const canvasRect = canvas?.getBoundingClientRect();
+    const canvasStyle = canvas ? getComputedStyle(canvas) : null;
+    const layer = container?.closest('.dice-viewport') as HTMLElement | null;
+    const layerRect = layer?.getBoundingClientRect();
+    const metrics = {
+      window: {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio
+      },
+      layerRect: layerRect
+        ? {
+            width: Math.round(layerRect.width),
+            height: Math.round(layerRect.height),
+            top: Math.round(layerRect.top),
+            left: Math.round(layerRect.left)
+          }
+        : null,
+      containerRect: containerRect
+        ? {
+            width: Math.round(containerRect.width),
+            height: Math.round(containerRect.height),
+            top: Math.round(containerRect.top),
+            left: Math.round(containerRect.left)
+          }
+        : null,
+      canvasRect: canvasRect
+        ? {
+            width: Math.round(canvasRect.width),
+            height: Math.round(canvasRect.height),
+            top: Math.round(canvasRect.top),
+            left: Math.round(canvasRect.left)
+          }
+        : null,
+      canvasStyle: canvasStyle
+        ? {
+            width: canvasStyle.width,
+            height: canvasStyle.height,
+            transform: canvasStyle.transform,
+            top: canvasStyle.top,
+            left: canvasStyle.left
+          }
+        : null
+    };
+
+    console.info(`[DiceService] viewport metrics (${tag})`, metrics);
+
+    const summaryParts = [
+      metrics.layerRect
+        ? `layer ${metrics.layerRect.width}x${metrics.layerRect.height} @ (${metrics.layerRect.left},${metrics.layerRect.top})`
+        : null,
+      metrics.containerRect
+        ? `container ${metrics.containerRect.width}x${metrics.containerRect.height} @ (${metrics.containerRect.left},${metrics.containerRect.top})`
+        : null,
+      metrics.canvasRect
+        ? `canvas ${metrics.canvasRect.width}x${metrics.canvasRect.height} @ (${metrics.canvasRect.left},${metrics.canvasRect.top})`
+        : null,
+      metrics.canvasStyle ? `canvas style h=${metrics.canvasStyle.height} top=${metrics.canvasStyle.top}` : null,
+      metrics.window
+        ? `window ${metrics.window.innerWidth}x${metrics.window.innerHeight} dpr=${metrics.window.devicePixelRatio}`
+        : null
+    ].filter(Boolean);
+    if (summaryParts.length) {
+      console.info(`[DiceService] viewport summary (${tag})`, summaryParts.join(' | '));
+    }
   }
 }

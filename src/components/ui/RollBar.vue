@@ -5,17 +5,8 @@
         Round {{ state.currentRound }}/{{ state.maxRounds }}
       </div>
       <div class="line">Total: {{ totals.grand }}</div>
+      <div class="line subtle">Rolls left: {{ rollsLeft }}</div>
     </div>
-    <button
-      class="roll-btn"
-      :disabled="disabled"
-      type="button"
-      @click="handleRoll"
-    >
-      <span v-if="isRolling">Rolling...</span>
-      <span v-else-if="rollsLeft > 0">Roll ({{ rollsLeft }})</span>
-      <span v-else>No rolls left</span>
-    </button>
   </div>
 </template>
 
@@ -28,24 +19,6 @@ const store = useGameStore();
 const state = computed(() => store.engineState);
 const totals = computed(() => store.totals);
 const rollsLeft = computed(() => Math.max(0, (store.rollLimit ?? 0) - (store.rollsThisRound ?? 0)));
-const isRolling = computed(() => store.isRolling);
-const serviceReady = computed(() => store.serviceReady);
-
-const disabled = computed(() => {
-  if (!serviceReady.value) return true;
-  if (store.isRolling) return true;
-  if (state.value.completed) return true;
-  if (rollsLeft.value <= 0) return true;
-  return false;
-});
-
-async function handleRoll() {
-  if (rollsLeft.value === (store.rollLimit ?? 0)) {
-    await store.rollAll();
-  } else {
-    await store.rerollUnheld();
-  }
-}
 </script>
 
 <style scoped>
@@ -63,30 +36,12 @@ async function handleRoll() {
 }
 
 .info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  gap: 4px;
   font-size: 14px;
 }
 
-.roll-btn {
-  background: linear-gradient(120deg, #1f7bb6, #25a4e0);
-  border: none;
-  color: #fff;
-  font-weight: 700;
-  padding: 12px 16px;
-  border-radius: 10px;
-  cursor: pointer;
-  min-width: 140px;
-  transition: opacity 120ms ease, transform 120ms ease;
-}
-
-.roll-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.roll-btn:not(:disabled):active {
-  transform: translateY(1px);
+.subtle {
+  opacity: 0.8;
 }
 </style>
