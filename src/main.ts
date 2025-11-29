@@ -1,26 +1,15 @@
 import './style.css';
-import Phaser from 'phaser';
-import { phaserConfig } from './phaser.config';
-import { BootScene } from './scenes/BootScene';
-import { PreloadScene } from './scenes/PreloadScene';
-import { MainScene } from './scenes/MainScene';
-import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
+import { createPinia } from 'pinia';
+import { createApp } from 'vue';
+
+import App from './App.vue';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
+import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
 
-async function boot() {
-  const config: Phaser.Types.Core.GameConfig = {
-    ...phaserConfig,
-    scene: [BootScene, PreloadScene, MainScene]
-  };
+const app = createApp(App);
+app.use(createPinia());
+app.mount('#app');
 
-  // Launch game
-  // eslint-disable-next-line no-new
-  new Phaser.Game(config);
-}
-
-boot().catch((err) => console.error('Failed to bootstrap game', err));
-
-// PWA: set up update prompt when a new SW is available
 setupPWAUpdatePrompt(() => {
   const el = document.createElement('div');
   el.className = 'update-toast';
@@ -35,5 +24,4 @@ setupPWAUpdatePrompt(() => {
   });
 });
 
-// PWA: show install prompt UI when supported
 setupInstallPrompt();

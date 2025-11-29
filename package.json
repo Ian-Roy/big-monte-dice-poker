@@ -10,19 +10,27 @@
     "build": "ts-node --esm --transpile-only tools/gen-assets.ts && vite build",
     "build:ci": "vite build",
     "gen:assets": "ts-node --esm --transpile-only tools/gen-assets.ts",
-    "preview": "vite preview --host"
+    "gen:dice-sprites": "ts-node --esm --transpile-only tools/bake-dice-sprites.ts",
+    "preview": "vite preview --host",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
-    "phaser": "^3.70.0"
+    "pinia": "^2.2.4",
+    "vue": "^3.4.38"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
+    "@vitejs/plugin-vue": "^5.1.2",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^24.1.1",
     "pngjs": "^7.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.8",
-    "vite-plugin-pwa": "^0.20.5"
+    "vite-plugin-pwa": "^0.20.5",
+    "vitest": "^1.6.0"
   },
   "engines": {
     "node": ">=20"

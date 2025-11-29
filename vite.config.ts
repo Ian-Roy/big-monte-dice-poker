@@ -1,3 +1,4 @@
+import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -7,6 +8,7 @@ const REPO_BASE = process.env.REPO_BASE || "/big-monte-dice-poker/";
 export default defineConfig({
   base: REPO_BASE,
   plugins: [
+    vue(),
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
@@ -22,7 +24,7 @@ export default defineConfig({
       manifest: {
         name: "Big Monte Dice Poker",
         short_name: "Big Monte Dice Poker",
-        description: "Phaser 3 PWA dice poker game.",
+        description: "Vue 3 + Dice-Box PWA dice poker game.",
         display: "standalone",
         background_color: "#0b1020",
         theme_color: "#0b1020",
@@ -46,5 +48,9 @@ export default defineConfig({
   ],
   build: {
     sourcemap: false,
+  },
+  test: {
+    globals: true,
+    environment: "jsdom",
   },
 });

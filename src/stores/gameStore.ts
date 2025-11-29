@@ -1,0 +1,159 @@
+import { computed, ref, shallowRef } from 'vue';
+import { defineStore } from 'pinia';
+
+import { GameEngine, type CategoryKey } from '../game/engine';
+import { emptySnapshot, snapshotFromService, type DiceSnapshot } from '../shared/DiceState';
+import type { DiceService, DiceServiceSnapshot } from '../shared/DiceService';
+
+export type DiceServiceAdapter = Pick<
+  DiceService,
+  'rollAll' | 'rerollUnheld' | 'toggleHold' | 'startNewRound' | 'onChange' | 'getSnapshot'
+>;
+
+export const useGameStore = defineStore('game', () => {
+  const engine = new GameEngine();
+  const engineState = ref(engine.getState());
+  const diceSnapshot = ref<DiceSnapshot>(emptySnapshot());
+  const serviceReady = ref(false);
+  const serviceError = ref<string | null>(null);
+  const lastError = ref<string | null>(null);
+
+  const diceService = shallowRef<DiceServiceAdapter | null>(null);
+  const diceUnsub = shallowRef<null | (() => void)>(null);
+
+  const categories = computed(() => engineState.value.categories);
+  const totals = computed(() => engineState.value.totals);
+  const isRolling = computed(() => diceSnapshot.value.isRolling);
+  const rollsThisRound = computed(() => diceSnapshot.value.rollsThisRound);
+  const rollLimit = computed(() => engineState.value.maxRolls);
+
+  function setEngineState() {
+    engineState.value = engine.getState();
+  }
+
+  function setServiceError(message: string | null) {
+    serviceError.value = message;
+  }
+
+  function clearError() {
+    lastError.value = null;
+  }
+
+  function syncEngineRoll(snapshot: DiceSnapshot) {
+    const values = snapshot.values;
+    if (values.some((v) => typeof v !== 'number')) return;
+    if (snapshot.rollsThisRound <= engineState.value.rollsThisRound) return;
+    try {
+      engine.recordRoll(values as number[]);
+      setEngineState();
+    } catch (err) {
+      serviceError.value = (err as Error).message;
+    }
+  }
+
+  function handleServiceUpdate(raw: DiceServiceSnapshot) {
+    const mapped = snapshotFromService(raw);
+    diceSnapshot.value = mapped;
+    serviceReady.value = true;
+    setServiceError(null);
+    syncEngineRoll(mapped);
+  }
+
+  function attachDiceService(service: DiceServiceAdapter) {
+    detachDiceService();
+    diceService.value = service;
+    try {
+      const initial = service.getSnapshot();
+      handleServiceUpdate(initial);
+    } catch (err) {
+      serviceError.value = (err as Error).message;
+    }
+    diceUnsub.value = service.onChange((snap) => handleServiceUpdate(snap));
+  }
+
+  function detachDiceService() {
+    diceUnsub.value?.();
+    diceUnsub.value = null;
+    diceService.value = null;
+    serviceReady.value = false;
+    diceSnapshot.value = emptySnapshot();
+  }
+
+  async function rollAll() {
+    clearError();
+    if (!diceService.value) {
+      lastError.value = 'Dice service not attached';
+      return;
+    }
+    await diceService.value.rollAll();
+  }
+
+  async function rerollUnheld() {
+    clearError();
+    if (!diceService.value) {
+      lastError.value = 'Dice service not attached';
+      return;
+    }
+    await diceService.value.rerollUnheld();
+  }
+
+  function toggleHold(index: number) {
+    clearError();
+    try {
+      engine.toggleHold(index);
+      setEngineState();
+    } catch (err) {
+      lastError.value = (err as Error).message;
+      return;
+    }
+    diceService.value?.toggleHold(index);
+  }
+
+  function scoreCategory(key: CategoryKey, options?: { skipServiceRoundReset?: boolean }) {
+    clearError();
+    try {
+      engine.scoreCategory(key);
+      setEngineState();
+    } catch (err) {
+      lastError.value = (err as Error).message;
+      return;
+    }
+
+    if (!options?.skipServiceRoundReset) {
+      diceService.value?.startNewRound();
+    }
+  }
+
+  function startNewRound() {
+    clearError();
+    engine.startNewRound();
+    setEngineState();
+    diceService.value?.startNewRound();
+  }
+
+  return {
+    // state
+    engineState,
+    diceSnapshot,
+    serviceReady,
+    serviceError,
+    lastError,
+    rollLimit,
+    categories,
+    totals,
+    isRolling,
+    rollsThisRound,
+    // lifecycle
+    attachDiceService,
+    detachDiceService,
+    handleServiceUpdate,
+    setServiceError,
+    // actions
+    rollAll,
+    rerollUnheld,
+    toggleHold,
+    scoreCategory,
+    startNewRound,
+    previewCategory: (key: CategoryKey) => engine.previewCategory(key)
+  };
+});
