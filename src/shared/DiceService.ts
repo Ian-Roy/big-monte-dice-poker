@@ -35,7 +35,9 @@ export class DiceService {
 
     this.diceBox = new DiceBox({
       assetPath,
-      container: containerSelector
+      container: containerSelector,
+      scale: 10, // make dice render larger
+      delay: 6
     });
 
     this.diceBox.onRollComplete = (rollResult: any) => {

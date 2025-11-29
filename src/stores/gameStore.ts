@@ -40,14 +40,22 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function syncEngineRoll(snapshot: DiceSnapshot) {
+    if (snapshot.isRolling) return;
     const values = snapshot.values;
     if (values.some((v) => typeof v !== 'number')) return;
-    if (snapshot.rollsThisRound <= engineState.value.rollsThisRound) return;
-    try {
-      engine.recordRoll(values as number[]);
-      setEngineState();
-    } catch (err) {
-      serviceError.value = (err as Error).message;
+    const rolls = snapshot.rollsThisRound;
+    const stateRolls = engineState.value.rollsThisRound;
+    const valuesChanged =
+      values.length === engineState.value.dice.length &&
+      values.some((v, idx) => engineState.value.dice[idx] !== v);
+    if (rolls < 1) return;
+    if (rolls > stateRolls || (rolls === stateRolls && valuesChanged)) {
+      try {
+        engine.recordRoll(values as number[]);
+        setEngineState();
+      } catch (err) {
+        serviceError.value = (err as Error).message;
+      }
     }
   }
 
