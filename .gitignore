@@ -4,6 +4,7 @@ node_modules
 dist
 .vite
 .DS_Store
+!vendor/dice-box-fork/dist
 
 # Editor
 .idea
@@ -16,4 +17,3 @@ yarn-error.log*
 
 # Env
 .env.local
-
