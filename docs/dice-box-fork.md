@@ -14,6 +14,7 @@ The app uses these to let users click a 3D die to toggle hold without switching 
 - App build: `yarn build` (uses the linked fork and emits the forked dist under `dist/assets`).
 - Tests: `yarn test:run`
 - Ensure `vendor/dice-box-fork/dist` stays committed (root `.gitignore` allows it via `!vendor/dice-box-fork/dist`).
+- Root `prepare` script runs `yarn --cwd vendor/dice-box-fork build` automatically on install, so CI/Pages builds also generate the forked dist.
 
 ## Updating the fork from upstream
 1) Add upstream remote (once):
