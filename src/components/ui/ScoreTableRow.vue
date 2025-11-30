@@ -19,9 +19,10 @@
           Tap to score
         </template>
       </span>
-      <div class="dice" v-if="category.scoredDice?.length">
-        <span v-for="(die, idx) in sortedDice" :key="idx" class="die">
-          {{ die }}
+      <div class="dice" v-if="scoredDice.length">
+        <span v-for="(die, idx) in scoredDice" :key="idx" class="die">
+          <span v-if="die.style" class="die-sprite" :style="die.style" />
+          <span v-else class="die-fallback">{{ die.value }}</span>
         </span>
       </div>
     </div>
@@ -32,6 +33,8 @@
 import { computed } from 'vue';
 
 import type { CategoryKey, ScoreCategoryState } from '../../game/engine';
+import type { DiceFaceFrame } from '../../composables/useDiceSprites';
+import { useDiceSprites } from '../../composables/useDiceSprites';
 import { useGameStore } from '../../stores/gameStore';
 
 const props = defineProps<{
@@ -43,6 +46,8 @@ const emit = defineEmits<{
 }>();
 
 const store = useGameStore();
+const sprites = useDiceSprites();
+const SPRITE_SCALE = 0.44;
 
 const preview = computed(() => {
   if (props.category.scored || props.category.interactive === false) return null;
@@ -55,12 +60,35 @@ const preview = computed(() => {
   }
 });
 
-const sortedDice = computed(() => {
-  return props.category.scoredDice ? [...props.category.scoredDice].sort((a, b) => a - b) : [];
+const scoredDice = computed(() => {
+  if (!props.category.scoredDice) return [];
+  return [...props.category.scoredDice]
+    .sort((a, b) => a - b)
+    .map((value) => ({
+      value,
+      style: faceStyle(value)
+    }));
 });
 
 function onScore() {
   emit('select', props.category.key);
+}
+
+function faceStyle(val: number | null) {
+  if (typeof val !== 'number') return null;
+  const frame = sprites.frames[val] as DiceFaceFrame | undefined;
+  if (!frame) return null;
+  const { x, y, w, h } = frame;
+  const scale = SPRITE_SCALE;
+  const bgSize = `${sprites.sheetSize.w * scale}px ${sprites.sheetSize.h * scale}px`;
+  return {
+    width: `${w * scale}px`,
+    height: `${h * scale}px`,
+    backgroundImage: `url(${sprites.url})`,
+    backgroundSize: bgSize,
+    backgroundPosition: `-${x * scale}px -${y * scale}px`,
+    backgroundRepeat: 'no-repeat'
+  };
 }
 </script>
 
@@ -112,19 +140,30 @@ function onScore() {
 
 .dice {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
 }
 
 .die {
   display: inline-flex;
-  min-width: 20px;
-  height: 22px;
   align-items: center;
   justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 2px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.2);
+}
+
+.die-sprite {
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.35));
+}
+
+.die-fallback {
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.06);
+  color: #dbe9f2;
 }
 </style>

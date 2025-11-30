@@ -35,11 +35,11 @@ Practical notes for integrating and operating `@3d-dice/dice-box` in this projec
   - Emits sprite strip + metadata to `public/assets/dice-box/` and `src/assets/dice-box/`.
 - Usage:
   - Run `yarn gen:dice-sprites` to regenerate after theme/size changes.
-  - Vue composable `useDiceSprites` reads `faces.json` from `src/assets/dice-box/` and exposes `url`, `frames`, `sheetSize` for CSS backgrounds (LockRow, ScoreTable).
+  - Vue composable `useDiceSprites` reads `faces.json` from `src/assets/dice-box/` and exposes `url`, `frames`, `sheetSize` for CSS backgrounds (DiceFacesRow, ScoreTable).
 
 ## Vue Components & Layout
 - `DiceViewport` hosts `#dice-box`; `pointer-events: none` lets Vue UI capture input.
-- `LockRow` uses the baked sprite sheet as a CSS strip; held state is driven by store locks.
+- `DiceFacesRow` shows the current dice faces from the baked sprite strip; held state is visual only (toggled via 3D dice picking).
 - Roll button disables when DiceService isn’t ready or is rolling; initial roll uses `rollAll()`, subsequent rolls use `rerollUnheld()`.
 - Scoring flow: ScoreTable rows emit `select`, App shows confirm dialog, then calls `store.scoreCategory(key)`, which advances the engine and resets DiceService for the next round.
 
@@ -58,7 +58,7 @@ Practical notes for integrating and operating `@3d-dice/dice-box` in this projec
 - Canvas sizing: let Dice-Box manage the OffscreenCanvas backing store. Avoid setting `canvas.width/height` after init or you will hit `InvalidStateError: Cannot resize canvas after call to transferControlToOffscreen()`.
 - Visual area: size/position the injected canvas via CSS (e.g., `:global(#dice-box canvas)` at 110% height with a small negative top) rather than resizing the element directly. This keeps dice visible without fighting OffscreenCanvas.
 - Dice scale: current `scale` is `5` to fit a full-height mobile viewport. Adjust up/down in `DiceService` if you change canvas oversizing.
-- Bounds/viewport: the overlay is fixed to the viewport on mobile and capped to the app width on desktop, reserving only the top controls as a safe zone. Dice can roll over the scorecard/locks.
+- Bounds/viewport: the overlay is fixed to the viewport on mobile and capped to the app width on desktop, reserving only the top controls as a safe zone. Dice can roll over the scorecard/dice strip.
 - Debugging: DiceService logs layer/container/canvas rects and window metrics on init and around rolls (`viewport summary` lines). Use these to verify the canvas matches the overlay.
 - Layer control: a toggle moves the dice layer above/below the Vue UI; roll button forces the layer visible so rolls aren’t hidden. Pointer events are enabled on the canvas (and disabled when the layer is “under”) so clicks reach the dice for picking/holding.
 

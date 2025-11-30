@@ -17,7 +17,7 @@
     </header>
     <main class="layout">
       <section class="pane">
-        <LockRow />
+        <DiceFacesRow />
         <RollBar />
       </section>
       <section class="pane">
@@ -41,7 +41,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import DiceServiceBridge from './components/DiceServiceBridge.vue';
 import DiceViewport from './components/ui/DiceViewport.vue';
-import LockRow from './components/ui/LockRow.vue';
+import DiceFacesRow from './components/ui/DiceFacesRow.vue';
 import RollActionButton from './components/ui/RollActionButton.vue';
 import RollBar from './components/ui/RollBar.vue';
 import ScoreTable from './components/ui/ScoreTable.vue';
