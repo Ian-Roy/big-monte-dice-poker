@@ -10,11 +10,11 @@ This project vendors a fork of `@3d-dice/dice-box` at `vendor/dice-box-fork` and
 The app uses these to let users click a 3D die to toggle hold without switching layers.
 
 ## Local usage
-- Build fork dist (needed for GH Pages): `yarn --cwd vendor/dice-box-fork build`
+- Build fork dist (needed for GH Pages): `yarn --cwd vendor/dice-box-fork build` (or `yarn build:dice-box-fork` from root)
 - App build: `yarn build` (uses the linked fork and emits the forked dist under `dist/assets`).
 - Tests: `yarn test:run`
 - Ensure `vendor/dice-box-fork/dist` stays committed (root `.gitignore` allows it via `!vendor/dice-box-fork/dist`).
-- Root `prepare` script runs `yarn --cwd vendor/dice-box-fork build` automatically on install, so CI/Pages builds also generate the forked dist.
+- CI/Pages: because the fork dist is committed, no extra hook is required; if you ever need to regenerate in CI, run `yarn build:dice-box-fork` before `yarn build`.
 
 ## Updating the fork from upstream
 1) Add upstream remote (once):

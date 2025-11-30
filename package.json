@@ -14,7 +14,7 @@
     "preview": "vite preview --host",
     "test": "vitest",
     "test:run": "vitest run",
-    "prepare": "yarn --cwd vendor/dice-box-fork build"
+    "build:dice-box-fork": "yarn --cwd vendor/dice-box-fork build"
   },
   "dependencies": {
     "@3d-dice/dice-box": "link:./vendor/dice-box-fork",
