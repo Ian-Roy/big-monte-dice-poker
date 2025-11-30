@@ -65,6 +65,26 @@ export const useGameStore = defineStore('game', () => {
     serviceReady.value = true;
     setServiceError(null);
     syncEngineRoll(mapped);
+    syncEngineHolds(mapped);
+  }
+
+  function syncEngineHolds(snapshot: DiceSnapshot) {
+    const currentHolds = engineState.value.holds;
+    const desiredHolds = snapshot.locks;
+    let changed = false;
+    desiredHolds.forEach((held, idx) => {
+      if (held !== currentHolds[idx]) {
+        try {
+          engine.toggleHold(idx);
+          changed = true;
+        } catch (err) {
+          // ignore toggle errors (e.g., before first roll); service guards should prevent this
+        }
+      }
+    });
+    if (changed) {
+      setEngineState();
+    }
   }
 
   function attachDiceService(service: DiceServiceAdapter) {

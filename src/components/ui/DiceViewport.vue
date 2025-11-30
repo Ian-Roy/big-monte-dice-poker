@@ -49,7 +49,7 @@ const layerStyle = computed(() => {
 <style scoped>
 .dice-viewport {
   position: fixed;
-  pointer-events: none;
+  pointer-events: auto;
   overflow: hidden;
   z-index: 18;
   background: radial-gradient(circle at 30% 30%, rgba(54, 109, 146, 0.14), transparent 36%),
@@ -59,17 +59,19 @@ const layerStyle = computed(() => {
 
 .dice-viewport--under {
   z-index: 1;
+  pointer-events: none;
 }
 
 .dice-viewport--hidden #dice-box canvas {
   opacity: 0;
   visibility: hidden;
+  pointer-events: none;
 }
 
 #dice-box {
   position: absolute;
   inset: 0;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 :global(#dice-box canvas) {
@@ -81,5 +83,6 @@ const layerStyle = computed(() => {
   left: 0;
   right: 0;
   transform-origin: center top;
+  pointer-events: auto;
 }
 </style>

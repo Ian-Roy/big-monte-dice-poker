@@ -28,6 +28,8 @@ export class DiceService {
   private listeners: ChangeListener[] = [];
   private pendingRerollIndices: number[] = [];
   private containerSelector: string;
+  private containerEl: HTMLElement | null = null;
+  private pointerListener: ((ev: PointerEvent) => void) | null = null;
 
   constructor(containerSelector = '#dice-box') {
     this.containerSelector = containerSelector;
@@ -39,7 +41,9 @@ export class DiceService {
       assetPath,
       container: containerSelector,
       scale: 5, // slightly smaller to fit full-height viewport
-      delay: 6
+      delay: 6,
+      offscreen: false,
+      onDiePicked: (hit: any) => this.handlePickedDie(hit)
     });
 
     this.diceBox.onRollComplete = (rollResult: any) => {
@@ -50,6 +54,19 @@ export class DiceService {
   async init() {
     console.info('[DiceService] init start');
     await this.diceBox.init();
+    if (typeof document !== 'undefined') {
+      this.containerEl = document.querySelector(this.containerSelector) as HTMLElement | null;
+      if (this.containerEl) {
+        this.pointerListener = (event: PointerEvent) => {
+          const hit = this.diceBox?.pickDieFromPointer?.(event);
+          if (hit?.hit) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        };
+        this.containerEl.addEventListener('pointerdown', this.pointerListener);
+      }
+    }
     console.info('[DiceService] init complete');
     this.logViewportMetrics('init');
     this.emitChange();
@@ -59,6 +76,9 @@ export class DiceService {
     this.disposed = true;
     if (this.diceBox?.clear) {
       this.diceBox.clear();
+    }
+    if (this.containerEl && this.pointerListener) {
+      this.containerEl.removeEventListener('pointerdown', this.pointerListener);
     }
     this.diceBox = undefined;
     this.listeners = [];
@@ -86,11 +106,16 @@ export class DiceService {
   }
 
   startNewRound() {
+    const currentIds = this.dice.map((die) => die.rollId);
     this.rollsThisRound = 0;
     this.rolling = false;
     this.dice = this.buildEmptyDice();
     this.pendingRerollIndices = [];
     console.info('[DiceService] startNewRound -> reset state');
+    if (currentIds.length && this.diceBox?.setHeldState) {
+      this.diceBox.setHeldState({ ids: currentIds, held: false, scale: 1 });
+    }
+    this.syncHeldVisuals();
     this.emitChange();
   }
 
@@ -168,6 +193,7 @@ export class DiceService {
     }
     die.held = !die.held;
     console.debug('[DiceService] toggleHold', { index, held: die.held, value: die.value });
+    this.syncHeldVisuals();
     this.emitChange();
   }
 
@@ -272,6 +298,7 @@ export class DiceService {
     this.rolling = false;
     console.debug('[DiceService] roll complete -> snapshot', this.getSnapshot());
     this.logViewportMetrics('roll-complete');
+    this.syncHeldVisuals();
     this.emitChange();
   }
 
@@ -292,6 +319,25 @@ export class DiceService {
       groupId: '-1',
       rollId: `placeholder-${index}`
     }));
+  }
+
+  private handlePickedDie(hit: { hit?: boolean; rollId?: string }) {
+    if (!hit?.hit || !hit.rollId || this.rolling) return;
+    const idx = this.dice.findIndex((d) => d.rollId === String(hit.rollId));
+    if (idx < 0) return;
+    this.toggleHold(idx);
+  }
+
+  private syncHeldVisuals() {
+    if (!this.diceBox?.setHeldState) return;
+    const heldIds = this.dice.filter((d) => d.held && d.rollId).map((d) => d.rollId);
+    const unheldIds = this.dice.filter((d) => !d.held && d.rollId).map((d) => d.rollId);
+    if (unheldIds.length) {
+      this.diceBox.setHeldState({ ids: unheldIds, held: false, scale: 1 });
+    }
+    if (heldIds.length) {
+      this.diceBox.setHeldState({ ids: heldIds, held: true, scale: 1.08, color: '#3aa0ff' });
+    }
   }
 
   private normalizeIds(die: any) {

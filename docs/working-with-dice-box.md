@@ -15,6 +15,7 @@ Practical notes for integrating and operating `@3d-dice/dice-box` in this projec
   - `assetPath` → `${import.meta.env.BASE_URL || '/' }assets/dice-box/`
   - `container` → `#dice-box`
   - `scale: 10` (dice size), `delay: 6` (start delay)
+  - `offscreen: false` to keep rendering on the main thread for picking/holding support; click a die to toggle its hold state (emissive blue + slight scale bump via the fork’s `setHeldState` API).
 - Lifecycle: `init()` → `rollAll()` / `rerollUnheld()` → `startNewRound()` → `dispose()`.
 - Snapshots: DiceService emits `dice[]` with `{ index, value, held, groupId, rollId }`, plus `rollsThisRound` and `isRolling`.
 - Mapping: We convert service snapshots to view state via `snapshotFromService` (values/locks) and synchronize into the headless engine through the Pinia store.
@@ -59,7 +60,7 @@ Practical notes for integrating and operating `@3d-dice/dice-box` in this projec
 - Dice scale: current `scale` is `5` to fit a full-height mobile viewport. Adjust up/down in `DiceService` if you change canvas oversizing.
 - Bounds/viewport: the overlay is fixed to the viewport on mobile and capped to the app width on desktop, reserving only the top controls as a safe zone. Dice can roll over the scorecard/locks.
 - Debugging: DiceService logs layer/container/canvas rects and window metrics on init and around rolls (`viewport summary` lines). Use these to verify the canvas matches the overlay.
-- Layer control: a toggle moves the dice layer above/below the Vue UI; roll button forces the layer visible so rolls aren’t hidden.
+- Layer control: a toggle moves the dice layer above/below the Vue UI; roll button forces the layer visible so rolls aren’t hidden. Pointer events are enabled on the canvas (and disabled when the layer is “under”) so clicks reach the dice for picking/holding.
 
 ## Quick Commands
 - Generate sprites: `yarn gen:dice-sprites`
