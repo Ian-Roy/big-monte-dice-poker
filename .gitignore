@@ -5,6 +5,7 @@ dist
 .vite
 .DS_Store
 !vendor/dice-box-fork/dist
+!vendor/dice-box-fork/dist/**
 
 # Editor
 .idea
