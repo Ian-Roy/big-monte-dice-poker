@@ -1,12 +1,9 @@
 <template>
   <div
     class="dice-viewport"
-    :class="{
-      'dice-viewport--under': layerMode === 'under',
-      'dice-viewport--hidden': layerMode === 'under'
-    }"
+    :class="{ 'dice-viewport--hidden': layerMode === 'hidden' }"
     :style="layerStyle"
-    :inert="layerMode === 'under'"
+    :inert="layerMode === 'hidden'"
   >
     <div id="dice-box"></div>
   </div>
@@ -24,7 +21,7 @@ type Bounds = {
 
 const props = defineProps<{
   bounds: Bounds | null;
-  layerMode: 'over' | 'under';
+  layerMode: 'visible' | 'hidden';
 }>();
 
 const layerStyle = computed(() => {
@@ -57,15 +54,8 @@ const layerStyle = computed(() => {
     linear-gradient(145deg, rgba(7, 21, 35, 0.9), rgba(5, 15, 28, 0.92));
 }
 
-.dice-viewport--under {
-  z-index: 1;
-  pointer-events: none;
-}
-
-.dice-viewport--hidden #dice-box canvas {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
+.dice-viewport--hidden {
+  display: none;
 }
 
 #dice-box {

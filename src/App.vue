@@ -1,20 +1,18 @@
 <template>
   <div id="app-shell" ref="shellEl">
-    <DiceViewport :bounds="diceLayerBounds" :layer-mode="diceLayerMode" />
+    <DiceViewport :bounds="diceLayerBounds" :layer-mode="diceVisibility" />
 
     <div ref="controlsEl" class="top-controls">
-      <button type="button" class="layer-toggle" @click="toggleDiceLayer">
-        {{ diceLayerMode === 'over' ? 'Hide dice layer (under UI)' : 'Show dice layer (over UI)' }}
-      </button>
-      <RollActionButton :on-force-show="showDiceLayer" />
-    </div>
-
-    <header class="hero">
-      <div class="title">
-        <div class="eyebrow">Big Monte</div>
-        <h1>Dice Poker</h1>
+      <RollActionButton :on-force-show="showDice" />
+      <div class="score-total" aria-live="polite">
+        <span class="label">Total</span>
+        <strong class="value">{{ totals.grand }}</strong>
       </div>
-    </header>
+      <button type="button" class="dice-toggle" @click="toggleDiceVisibility">
+        {{ diceVisibility === 'visible' ? 'Hide dice' : 'Show dice' }}
+      </button>
+    </div>
+    <ScoreDicePreview class="top-dice-preview" />
     <main class="layout">
       <section class="pane">
         <DiceFacesRow />
@@ -47,6 +45,7 @@ import RollBar from './components/ui/RollBar.vue';
 import ScoreTable from './components/ui/ScoreTable.vue';
 import ConfirmDialog from './components/ui/ConfirmDialog.vue';
 import ToastStack from './components/ui/ToastStack.vue';
+import ScoreDicePreview from './components/ui/ScoreDicePreview.vue';
 import type { CategoryKey } from './game/engine';
 import { useGameStore } from './stores/gameStore';
 
@@ -63,9 +62,10 @@ type DiceLayerBounds = {
 const shellEl = ref<HTMLElement | null>(null);
 const controlsEl = ref<HTMLElement | null>(null);
 const diceLayerBounds = ref<DiceLayerBounds | null>(null);
-const diceLayerMode = ref<'over' | 'under'>('over');
+const diceVisibility = ref<'visible' | 'hidden'>('visible');
 const lastDiceBounds = ref<DiceLayerBounds | null>(null);
-const scoreUiDisabled = computed(() => diceLayerMode.value === 'over');
+const totals = computed(() => store.totals);
+const scoreUiDisabled = computed(() => diceVisibility.value === 'visible');
 const handleWindowResize = () => updateDiceLayerBounds(true);
 
 const pendingCategory = ref<CategoryKey | null>(null);
@@ -119,12 +119,12 @@ function confirmScore() {
   }
 }
 
-function toggleDiceLayer() {
-  diceLayerMode.value = diceLayerMode.value === 'over' ? 'under' : 'over';
+function toggleDiceVisibility() {
+  diceVisibility.value = diceVisibility.value === 'visible' ? 'hidden' : 'visible';
 }
 
-function showDiceLayer() {
-  diceLayerMode.value = 'over';
+function showDice() {
+  diceVisibility.value = 'visible';
 }
 
 function updateDiceLayerBounds(triggeredByResize = false) {
@@ -252,13 +252,13 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
   padding: 6px 0 10px;
   backdrop-filter: blur(6px);
 }
 
-.layer-toggle {
+.dice-toggle {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(122, 211, 255, 0.5);
   color: #e7edf2;
@@ -270,32 +270,36 @@ watch(
   transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.layer-toggle:hover {
+.dice-toggle:hover {
   border-color: rgba(146, 227, 255, 0.8);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
 }
 
-.layer-toggle:active {
+.dice-toggle:active {
   transform: translateY(1px);
 }
 
-.hero {
-  padding: 12px 6px;
-  position: relative;
-  z-index: 6;
+.top-dice-preview {
+  margin: 6px 0 12px;
+  justify-content: center;
+  display: flex;
 }
 
-.title .eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 12px;
+.score-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  min-width: 120px;
   color: #9ad5ff;
 }
 
-.title h1 {
-  margin: 0;
-  font-size: clamp(28px, 4vw, 38px);
-  letter-spacing: 0.02em;
+.score-total .value {
+  font-size: 20px;
+  color: #ffc857;
 }
 
 .layout {
