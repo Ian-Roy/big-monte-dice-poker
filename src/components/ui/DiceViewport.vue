@@ -6,7 +6,7 @@
       'dice-viewport--hidden': layerMode === 'under'
     }"
     :style="layerStyle"
-    aria-hidden="true"
+    :inert="layerMode === 'under'"
   >
     <div id="dice-box"></div>
   </div>
@@ -76,10 +76,10 @@ const layerStyle = computed(() => {
 
 :global(#dice-box canvas) {
   width: 100% !important;
-  height: 110% !important;
+  height: 100% !important;
   display: block;
   position: absolute;
-  top: -5%;
+  top: 0;
   left: 0;
   right: 0;
   transform-origin: center top;

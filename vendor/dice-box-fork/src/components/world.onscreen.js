@@ -216,7 +216,11 @@ class WorldOnscreen {
 		if(x < 0 || y < 0 || x > rect.width || y > rect.height){
 			return { hit: false }
 		}
-		const pick = this.#scene.pick(x, y, (mesh) => !!mesh?.metadata?.rollId)
+		const pick = this.#scene.pick(
+			x,
+			y,
+			(mesh) => mesh?.metadata && (mesh.metadata.rollId !== undefined && mesh.metadata.rollId !== null)
+		)
 		if(!pick?.hit || !pick.pickedMesh){
 			return { hit: false }
 		}

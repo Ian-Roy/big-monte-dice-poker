@@ -13037,10 +13037,14 @@ class pa {
     const i = C(this, ae).getBoundingClientRect(), r = e - i.left, s = t - i.top;
     if (r < 0 || s < 0 || r > i.width || s > i.height)
       return { hit: !1 };
-    const n = C(this, Z).pick(r, s, (h) => {
-      var d;
-      return !!((d = h == null ? void 0 : h.metadata) != null && d.rollId);
-    });
+    const n = C(this, Z).pick(
+      r,
+      s,
+      (h) => {
+        var d;
+        return (d = h == null ? void 0 : h.metadata) != null && d.rollId !== void 0 && d.rollId !== null;
+      }
+    );
     if (!(n != null && n.hit) || !n.pickedMesh)
       return { hit: !1 };
     const { rollId: a, groupId: o, id: l } = n.pickedMesh.metadata || {};

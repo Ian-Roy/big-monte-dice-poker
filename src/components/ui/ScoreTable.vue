@@ -1,5 +1,9 @@
 <template>
-  <div class="score-table">
+  <div
+    class="score-table"
+    :class="{ 'score-table--disabled': disabled }"
+    :aria-disabled="disabled ? 'true' : 'false'"
+  >
     <div class="section">
       <h3>Upper Section</h3>
       <div class="rows">
@@ -7,6 +11,7 @@
           v-for="cat in upper"
           :key="cat.key"
           :category="cat"
+          :disabled="disabled"
           @select="onSelect"
         />
       </div>
@@ -18,6 +23,7 @@
           v-for="cat in lower"
           :key="cat.key"
           :category="cat"
+          :disabled="disabled"
           @select="onSelect"
         />
       </div>
@@ -48,6 +54,10 @@ import { computed } from 'vue';
 
 import { useGameStore } from '../../stores/gameStore';
 import ScoreRow from './ScoreTableRow.vue';
+
+const props = defineProps<{
+  disabled?: boolean;
+}>();
 
 const store = useGameStore();
 const categories = computed(() => store.categories);
@@ -103,5 +113,11 @@ function onSelect(key: import('../../game/engine').CategoryKey) {
 .grand {
   font-weight: 700;
   color: #ffc857;
+}
+
+.score-table--disabled {
+  opacity: 0.75;
+  pointer-events: none;
+  filter: grayscale(0.1);
 }
 </style>

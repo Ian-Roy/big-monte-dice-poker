@@ -21,7 +21,7 @@
         <RollBar />
       </section>
       <section class="pane">
-        <ScoreTable @select="handleSelect" />
+        <ScoreTable :disabled="scoreUiDisabled" @select="handleSelect" />
       </section>
     </main>
     <DiceServiceBridge />
@@ -65,6 +65,7 @@ const controlsEl = ref<HTMLElement | null>(null);
 const diceLayerBounds = ref<DiceLayerBounds | null>(null);
 const diceLayerMode = ref<'over' | 'under'>('over');
 const lastDiceBounds = ref<DiceLayerBounds | null>(null);
+const scoreUiDisabled = computed(() => diceLayerMode.value === 'over');
 const handleWindowResize = () => updateDiceLayerBounds(true);
 
 const pendingCategory = ref<CategoryKey | null>(null);

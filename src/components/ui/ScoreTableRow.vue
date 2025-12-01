@@ -1,9 +1,10 @@
 <template>
   <button
     class="score-row"
-    :class="{ scored: category.scored, inactive: category.interactive === false }"
+    :class="{ scored: category.scored, inactive: isInactive }"
     type="button"
-    :disabled="category.scored || category.interactive === false"
+    :disabled="category.scored || isInactive"
+    :aria-disabled="category.scored || isInactive ? 'true' : 'false'"
     @click="onScore"
   >
     <span class="label">{{ category.label }}</span>
@@ -39,6 +40,7 @@ import { useGameStore } from '../../stores/gameStore';
 
 const props = defineProps<{
   category: ScoreCategoryState;
+  disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -48,9 +50,11 @@ const emit = defineEmits<{
 const store = useGameStore();
 const sprites = useDiceSprites();
 const SPRITE_SCALE = 0.44;
+const isDisabled = computed(() => props.disabled === true);
+const isInactive = computed(() => isDisabled.value || props.category.interactive === false);
 
 const preview = computed(() => {
-  if (props.category.scored || props.category.interactive === false) return null;
+  if (isDisabled.value || props.category.scored || props.category.interactive === false) return null;
   try {
     return store.engineState.dice.every((v) => typeof v === 'number')
       ? store.previewCategory?.(props.category.key) ?? null
@@ -71,6 +75,7 @@ const scoredDice = computed(() => {
 });
 
 function onScore() {
+  if (isDisabled.value || props.category.scored || props.category.interactive === false) return;
   emit('select', props.category.key);
 }
 
@@ -116,6 +121,10 @@ function faceStyle(val: number | null) {
 .score-row.inactive {
   border-style: dashed;
   cursor: default;
+}
+
+.score-row:disabled {
+  opacity: 0.75;
 }
 
 .label {

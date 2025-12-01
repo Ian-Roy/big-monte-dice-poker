@@ -30,6 +30,8 @@ export class DiceService {
   private containerSelector: string;
   private containerEl: HTMLElement | null = null;
   private pointerListener: ((ev: PointerEvent) => void) | null = null;
+  private windowPointerListener: ((ev: PointerEvent) => void) | null = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(containerSelector = '#dice-box') {
     this.containerSelector = containerSelector;
@@ -57,14 +59,32 @@ export class DiceService {
     if (typeof document !== 'undefined') {
       this.containerEl = document.querySelector(this.containerSelector) as HTMLElement | null;
       if (this.containerEl) {
+        this.syncCanvasSize();
+        if (typeof ResizeObserver !== 'undefined') {
+          this.resizeObserver = new ResizeObserver(() => this.syncCanvasSize());
+          this.resizeObserver.observe(this.containerEl);
+        }
+
         this.pointerListener = (event: PointerEvent) => {
-          const hit = this.diceBox?.pickDieFromPointer?.(event);
+          const hit = this.pickFromPointer(event);
           if (hit?.hit) {
             event.preventDefault();
             event.stopPropagation();
           }
         };
-        this.containerEl.addEventListener('pointerdown', this.pointerListener);
+        this.containerEl.addEventListener('pointerdown', this.pointerListener, { passive: false });
+
+        this.windowPointerListener = (event: PointerEvent) => {
+          const hit = this.pickFromPointer(event, { strictBounds: true });
+          if (hit?.hit) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        };
+        window.addEventListener('pointerdown', this.windowPointerListener, {
+          passive: false,
+          capture: true
+        });
       }
     }
     console.info('[DiceService] init complete');
@@ -80,6 +100,13 @@ export class DiceService {
     if (this.containerEl && this.pointerListener) {
       this.containerEl.removeEventListener('pointerdown', this.pointerListener);
     }
+    if (this.windowPointerListener) {
+      window.removeEventListener('pointerdown', this.windowPointerListener, true);
+    }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.pointerListener = null;
+    this.windowPointerListener = null;
     this.diceBox = undefined;
     this.listeners = [];
   }
@@ -302,6 +329,95 @@ export class DiceService {
     this.emitChange();
   }
 
+  private pickFromPointer(event: PointerEvent, options?: { strictBounds?: boolean }) {
+    if (!this.containerEl || this.disposed || this.rolling) return null;
+    if (!this.diceBox?.pickDieAt && !this.diceBox?.pickDieFromPointer) return null;
+
+    const viewport = this.containerEl.closest('.dice-viewport') as HTMLElement | null;
+    const pointerX = Math.round(event.clientX);
+    const pointerY = Math.round(event.clientY);
+    const strict = !!options?.strictBounds;
+    const log = (level: 'debug' | 'warn', reason: string, data: Record<string, unknown> = {}) => {
+      const payload = {
+        strict,
+        pointer: `${pointerX},${pointerY}`,
+        ...data
+      };
+      console[level](`[DiceService] pickFromPointer ${reason}`, payload);
+    };
+
+    if (viewport) {
+      const style = getComputedStyle(viewport);
+      if (style.pointerEvents === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        log('debug', 'skip viewport non-interactive', {
+          style: `${style.pointerEvents}/${style.visibility}/${style.opacity}`
+        });
+        return null;
+      }
+    }
+
+    const canvas = this.containerEl.querySelector('canvas') as HTMLCanvasElement | null;
+    const canvasRect = (canvas || this.containerEl).getBoundingClientRect();
+    const clampedX = Math.max(canvasRect.left + 0.5, Math.min(event.clientX, canvasRect.right - 0.5));
+    const clampedY = Math.max(canvasRect.top + 0.5, Math.min(event.clientY, canvasRect.bottom - 0.5));
+    const tolerance = options?.strictBounds ? 4 : 32;
+
+    const canvasRectData = {
+      left: Math.round(canvasRect.left),
+      right: Math.round(canvasRect.right),
+      top: Math.round(canvasRect.top),
+      bottom: Math.round(canvasRect.bottom)
+    };
+    const clampedData = { x: Math.round(clampedX), y: Math.round(clampedY) };
+    const commonLog = {
+      canvas: `${canvasRectData.left},${canvasRectData.top} -> ${canvasRectData.right},${canvasRectData.bottom}`,
+      clamped: `${clampedData.x},${clampedData.y}`,
+      tolerance
+    };
+
+    if (typeof this.diceBox.pickDieAt === 'function') {
+      const result = this.diceBox.pickDieAt(clampedX, clampedY);
+      if (result?.hit) {
+        log('debug', 'hit pickDieAt', { rollId: result?.rollId, ...commonLog });
+        return result;
+      }
+      const offsets = [-24, -16, -8, -4, 0, 4, 8, 16, 24];
+      for (const dx of offsets) {
+        for (const dy of offsets) {
+          if (dx === 0 && dy === 0) continue;
+          const ox = Math.max(
+            canvasRect.left - tolerance,
+            Math.min(clampedX + dx, canvasRect.right + tolerance)
+          );
+          const oy = Math.max(
+            canvasRect.top - tolerance,
+            Math.min(clampedY + dy, canvasRect.bottom + tolerance)
+          );
+          const retry = this.diceBox.pickDieAt(ox, oy);
+          if (retry?.hit) {
+            log('debug', 'hit pickDieAt fallback', {
+              rollId: retry.rollId,
+              dx,
+              dy,
+              ox: Math.round(ox),
+              oy: Math.round(oy),
+              ...commonLog
+            });
+            return retry;
+          }
+        }
+      }
+      log('warn', 'MISS pickDieAt', { rollId: result?.rollId, ...commonLog });
+      return result;
+    }
+    const result = this.diceBox.pickDieFromPointer?.(event) ?? null;
+    log(result?.hit ? 'debug' : 'warn', result?.hit ? 'hit pickDieFromPointer' : 'MISS pickDieFromPointer', {
+      rollId: result?.rollId,
+      ...commonLog
+    });
+    return result;
+  }
+
   private normalizeValue(value: any) {
     const num = Number(value);
     if (!Number.isFinite(num)) return 0;
@@ -321,10 +437,14 @@ export class DiceService {
     }));
   }
 
-  private handlePickedDie(hit: { hit?: boolean; rollId?: string }) {
-    if (!hit?.hit || !hit.rollId || this.rolling) return;
+  private handlePickedDie(hit: { hit?: boolean; rollId?: string | number }) {
+    if (!hit?.hit || hit.rollId === undefined || hit.rollId === null || this.rolling) return;
     const idx = this.dice.findIndex((d) => d.rollId === String(hit.rollId));
-    if (idx < 0) return;
+    if (idx < 0) {
+      console.warn('[DiceService] handlePickedDie -> rollId not found', { rollId: hit.rollId });
+      return;
+    }
+    console.debug('[DiceService] handlePickedDie -> toggleHold', { rollId: hit.rollId, index: idx });
     this.toggleHold(idx);
   }
 
@@ -345,6 +465,33 @@ export class DiceService {
       groupId: String(die?.groupId ?? '0'),
       rollId: String(die?.rollId ?? die?.id ?? `die-${Math.random()}`)
     };
+  }
+
+  private syncCanvasSize() {
+    if (!this.containerEl) return;
+    const canvas = this.containerEl.querySelector('canvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const desiredWidth = Math.round(rect.width);
+    const desiredHeight = Math.round(rect.height);
+    const currentWidth = canvas.width || 0;
+    const currentHeight = canvas.height || 0;
+    if (!desiredWidth || !desiredHeight) return;
+    if (desiredWidth === currentWidth && desiredHeight === currentHeight) return;
+
+    canvas.width = desiredWidth;
+    canvas.height = desiredHeight;
+    console.info('[DiceService] syncCanvasSize', {
+      desiredWidth,
+      desiredHeight,
+      currentWidth,
+      currentHeight
+    });
+    try {
+      this.diceBox?.resize?.();
+    } catch {
+      // ignore if diceBox lacks resize
+    }
   }
 
   private emitChange() {
