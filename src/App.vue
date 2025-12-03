@@ -3,23 +3,31 @@
     <DiceViewport :bounds="diceLayerBounds" :layer-mode="diceVisibility" />
 
     <div ref="controlsEl" class="top-controls">
-      <RollActionButton :on-force-show="showDice" />
-      <div class="score-total" aria-live="polite">
-        <span class="label">Total</span>
-        <strong class="value">{{ totals.grand }}</strong>
+      <div class="header-panel">
+        <div class="header-row">
+          <RollActionButton :on-force-show="showDice" />
+          <RollBar />
+        </div>
+        <ScoreDicePreview class="top-dice-preview" />
       </div>
-      <button type="button" class="dice-toggle" @click="toggleDiceVisibility">
-        {{ diceVisibility === 'visible' ? 'Hide dice' : 'Show dice' }}
-      </button>
+      <div
+        class="layer-toggle-zone"
+        role="button"
+        tabindex="0"
+        @click="toggleDiceVisibility"
+        @keydown.enter.prevent="toggleDiceVisibility"
+        @keydown.space.prevent="toggleDiceVisibility"
+      >
+        <div class="layer-pill-group">
+          <span class="layer-pill" :class="{ active: diceVisibility === 'visible' }">Dice layer</span>
+          <span class="layer-pill" :class="{ active: diceVisibility === 'hidden' }">Score card</span>
+        </div>
+        <span class="layer-toggle-label">{{ diceToggleLabel }}</span>
+      </div>
     </div>
-    <ScoreDicePreview class="top-dice-preview" />
     <main class="layout">
-      <section class="pane">
-        <DiceFacesRow />
-        <RollBar />
-      </section>
-      <section class="pane">
-        <ScoreTable :disabled="scoreUiDisabled" @select="handleSelect" />
+      <section class="pane score-card">
+        <ScoreTable @select="handleSelect" />
       </section>
     </main>
     <DiceServiceBridge />
@@ -39,7 +47,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import DiceServiceBridge from './components/DiceServiceBridge.vue';
 import DiceViewport from './components/ui/DiceViewport.vue';
-import DiceFacesRow from './components/ui/DiceFacesRow.vue';
 import RollActionButton from './components/ui/RollActionButton.vue';
 import RollBar from './components/ui/RollBar.vue';
 import ScoreTable from './components/ui/ScoreTable.vue';
@@ -65,7 +72,6 @@ const diceLayerBounds = ref<DiceLayerBounds | null>(null);
 const diceVisibility = ref<'visible' | 'hidden'>('visible');
 const lastDiceBounds = ref<DiceLayerBounds | null>(null);
 const totals = computed(() => store.totals);
-const scoreUiDisabled = computed(() => diceVisibility.value === 'visible');
 const handleWindowResize = () => updateDiceLayerBounds(true);
 
 const pendingCategory = ref<CategoryKey | null>(null);
@@ -121,11 +127,17 @@ function confirmScore() {
 
 function toggleDiceVisibility() {
   diceVisibility.value = diceVisibility.value === 'visible' ? 'hidden' : 'visible';
+  nextTick(() => updateDiceLayerBounds());
 }
 
 function showDice() {
   diceVisibility.value = 'visible';
+  nextTick(() => updateDiceLayerBounds());
 }
+
+const diceToggleLabel = computed(() =>
+  diceVisibility.value === 'visible' ? 'Hide dice' : 'Show dice'
+);
 
 function updateDiceLayerBounds(triggeredByResize = false) {
   const shell = shellEl.value;
@@ -250,69 +262,107 @@ watch(
   top: 0;
   z-index: 30;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 10px;
   padding: 6px 0 10px;
   backdrop-filter: blur(6px);
 }
 
-.dice-toggle {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(122, 211, 255, 0.5);
-  color: #e7edf2;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-weight: 700;
+.header-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(5, 14, 28, 0.85);
+  border: 1px solid rgba(122, 211, 255, 0.35);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42);
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.header-row .roll-bar {
+  flex: 1;
+  min-width: 160px;
+  max-width: 320px;
+}
+
+.layer-toggle-zone {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(7, 26, 44, 0.76);
   cursor: pointer;
-  min-width: 150px;
-  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
-.dice-toggle:hover {
+.layer-toggle-zone:focus-visible,
+.layer-toggle-zone:hover {
   border-color: rgba(146, 227, 255, 0.8);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
 }
 
-.dice-toggle:active {
-  transform: translateY(1px);
+.layer-pill-group {
+  display: flex;
+  gap: 8px;
+}
+
+.layer-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.layer-pill.active {
+  background: rgba(34, 197, 94, 0.25);
+  color: #a3ffe1;
+}
+
+.layer-toggle-label {
+  font-size: 13px;
+  color: #cde6ff;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.score-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .top-dice-preview {
-  margin: 6px 0 12px;
+  margin: 0;
   justify-content: center;
   display: flex;
 }
 
-.score-total {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-size: 14px;
-  font-weight: 600;
-  text-align: center;
-  min-width: 120px;
-  color: #9ad5ff;
-}
-
-.score-total .value {
-  font-size: 20px;
-  color: #ffc857;
-}
-
 .layout {
   display: grid;
-  gap: 14px;
+  gap: 8px;
 }
 
 .pane {
-  background: linear-gradient(135deg, rgba(2, 37, 52, 0.8), rgba(3, 23, 40, 0.92));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(5, 16, 30, 0.95), rgba(2, 8, 18, 0.97));
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 16px;
-  padding: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  padding: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   position: relative;
   z-index: 6;
 }

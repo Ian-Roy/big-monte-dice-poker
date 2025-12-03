@@ -49,9 +49,9 @@ const layerStyle = computed(() => {
   pointer-events: auto;
   overflow: hidden;
   z-index: 18;
-  background: radial-gradient(circle at 30% 30%, rgba(54, 109, 146, 0.14), transparent 36%),
-    radial-gradient(circle at 70% 20%, rgba(91, 166, 215, 0.12), transparent 32%),
-    linear-gradient(145deg, rgba(7, 21, 35, 0.9), rgba(5, 15, 28, 0.92));
+  background: radial-gradient(circle at 30% 30%, rgba(54, 109, 146, 0.35), transparent 42%),
+    radial-gradient(circle at 70% 20%, rgba(91, 166, 215, 0.28), transparent 38%),
+    linear-gradient(145deg, rgba(5, 17, 31, 0.9), rgba(2, 6, 12, 0.95));
 }
 
 .dice-viewport--hidden {

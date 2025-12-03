@@ -6,7 +6,9 @@
     @click="handleRoll"
   >
     <span v-if="isRolling">Rolling...</span>
-    <span v-else-if="rollsLeft > 0">Roll ({{ rollsLeft }})</span>
+    <span v-else-if="rollsLeft > 0">
+      Roll · {{ rollButtonLabel }}
+    </span>
     <span v-else>No rolls left</span>
   </button>
 </template>
@@ -27,6 +29,14 @@ const rollsLeft = computed(() =>
 );
 const isRolling = computed(() => store.isRolling);
 const serviceReady = computed(() => store.serviceReady);
+
+const rollButtonLabel = computed(() => {
+  const rolls = rollsLeft.value;
+  if (rolls <= 1) {
+    return rolls === 1 ? "1 roll left" : "No rolls left";
+  }
+  return `${rolls} rolls left`;
+});
 
 const disabled = computed(() => {
   if (!serviceReady.value) return true;
@@ -69,4 +79,5 @@ async function handleRoll() {
 .roll-action:not(:disabled):active {
   transform: translateY(1px);
 }
+
 </style>
