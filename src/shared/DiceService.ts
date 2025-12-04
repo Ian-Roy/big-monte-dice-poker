@@ -1,5 +1,8 @@
 import DiceBox from '@3d-dice/dice-box';
 
+const DICE_BOX_DEFAULT_COLOR = '#3b82f6';
+const DICE_BOX_HELD_COLOR = '#22c55e';
+
 export type GameDie = {
   index: number;
   value: number;
@@ -109,6 +112,7 @@ export class DiceService {
   private pointerListener: ((ev: PointerEvent) => void) | null = null;
   private windowPointerListener: ((ev: PointerEvent) => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private heldVisualsWarned = false;
 
   constructor(containerSelector = '#dice-box') {
     this.containerSelector = containerSelector;
@@ -122,6 +126,7 @@ export class DiceService {
       scale: 5, // slightly smaller to fit full-height viewport
       delay: 6,
       offscreen: false,
+      themeColor: DICE_BOX_DEFAULT_COLOR,
       onDiePicked: (hit: any) => this.handlePickedDie(hit)
     });
 
@@ -217,7 +222,7 @@ export class DiceService {
     this.pendingRerollIndices = [];
     console.info('[DiceService] startNewRound -> reset state');
     if (currentIds.length && this.diceBox?.setHeldState) {
-      this.diceBox.setHeldState({ ids: currentIds, held: false, scale: 1 });
+      this.applyHeldVisuals(currentIds, false);
     }
     this.syncHeldVisuals();
     this.emitChange();
@@ -483,14 +488,35 @@ export class DiceService {
   }
 
   private syncHeldVisuals() {
-    if (!this.diceBox?.setHeldState) return;
+    if (!this.diceBox?.setHeldState) {
+      if (!this.heldVisualsWarned) {
+        console.warn('[DiceService] setHeldState unavailable; cannot sync held visuals');
+        this.heldVisualsWarned = true;
+      }
+      return;
+    }
+
     const heldIds = this.dice.filter((d) => d.held && d.rollId).map((d) => d.rollId);
     const unheldIds = this.dice.filter((d) => !d.held && d.rollId).map((d) => d.rollId);
     if (unheldIds.length) {
-      this.diceBox.setHeldState({ ids: unheldIds, held: false, scale: 1 });
+      this.applyHeldVisuals(unheldIds, false);
     }
     if (heldIds.length) {
-      this.diceBox.setHeldState({ ids: heldIds, held: true, scale: 1.08, color: '#3aa0ff' });
+      this.applyHeldVisuals(heldIds, true);
+    }
+  }
+
+  private applyHeldVisuals(ids: string[], held: boolean) {
+    if (!ids.length || !this.diceBox?.setHeldState) return;
+    try {
+      this.diceBox.setHeldState({
+        ids,
+        held,
+        scale: held ? 1.08 : 1,
+        color: held ? DICE_BOX_HELD_COLOR : DICE_BOX_DEFAULT_COLOR
+      });
+    } catch (err) {
+      console.warn('[DiceService] setHeldState failed', { held, count: ids.length, err });
     }
   }
 

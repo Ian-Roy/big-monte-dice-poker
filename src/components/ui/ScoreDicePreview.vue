@@ -1,6 +1,16 @@
 <template>
-  <div class="score-dice-preview" aria-label="Current dice roll">
-    <canvas ref="canvasEl" class="score-dice-canvas" role="img" />
+  <div class="score-dice-preview" aria-label="Current dice roll; tap a die to lock or unlock it">
+    <div class="score-dice-canvas-wrap" :class="{ disabled: !canToggleHolds }">
+      <canvas
+        ref="canvasEl"
+        class="score-dice-canvas"
+        role="img"
+        @pointerdown="handleScoreDicePointerDown"
+      />
+      <div v-if="canvasOverlayText" class="score-dice-overlay">
+        <span>{{ canvasOverlayText }}</span>
+      </div>
+    </div>
     <div class="label">Current roll</div>
   </div>
 </template>
@@ -14,6 +24,18 @@ const canvasEl = ref<HTMLCanvasElement | null>(null);
 const store = useGameStore();
 const diceValues = computed(() => store.diceSnapshot.values);
 const holds = computed(() => store.diceSnapshot.locks);
+const isRolling = computed(() => store.isRolling);
+const rollsThisRound = computed(() => store.rollsThisRound ?? 0);
+const serviceReady = computed(() => store.serviceReady);
+const canToggleHolds = computed(
+  () => serviceReady.value && !isRolling.value && rollsThisRound.value > 0
+);
+const canvasOverlayText = computed(() => {
+  if (!serviceReady.value) return "Loading dice...";
+  if (isRolling.value) return "Rolling...";
+  if (rollsThisRound.value === 0) return "Roll first";
+  return "";
+});
 
 const diffuseUrl = new URL(
   "../../assets/dice-box/diffuse-light.png",
@@ -23,6 +45,19 @@ const DIE_SIZE = 48;
 const DIE_SPACING = 10;
 const DIE_PADDING = 12;
 const DIE_COUNT = 5;
+const DIE_TOGGLE_TOLERANCE = 8;
+const DICE_PREVIEW_COLORS = {
+  default: {
+    fill: "rgba(59, 130, 246, 0.18)",
+    stroke: "rgba(37, 99, 235, 0.65)",
+    text: "#dbeaee"
+  },
+  held: {
+    fill: "rgba(34, 197, 94, 0.24)",
+    stroke: "#22c55e",
+    text: "#dfffe7"
+  }
+};
 
 const textureImage = new Image();
 textureImage.src = diffuseUrl;
@@ -51,11 +86,10 @@ function drawDice() {
   diceValues.value.slice(0, DIE_COUNT).forEach((value, idx) => {
     const isHeld = !!holds.value[idx];
     const x = DIE_PADDING + idx * (DIE_SIZE + DIE_SPACING);
+    const palette = isHeld ? DICE_PREVIEW_COLORS.held : DICE_PREVIEW_COLORS.default;
 
-    ctx.fillStyle = isHeld
-      ? "rgba(34, 197, 94, 0.2)"
-      : "rgba(255, 255, 255, 0.08)";
-    ctx.strokeStyle = isHeld ? "#22c55e" : "rgba(255, 255, 255, 0.45)";
+    ctx.fillStyle = palette.fill;
+    ctx.strokeStyle = palette.stroke;
     ctx.lineWidth = 1.5;
     drawRoundedRect(
       ctx,
@@ -82,15 +116,15 @@ function drawDice() {
         ctx.fillRect(0, 0, DIE_SIZE - 4, DIE_SIZE - 4);
         ctx.restore();
       } else {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.fillStyle = palette.fill;
         ctx.fillRect(x + 2, baseY + 2, DIE_SIZE - 4, DIE_SIZE - 4);
       }
     } else {
-      ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.fillStyle = palette.fill;
       ctx.fillRect(x + 2, baseY + 2, DIE_SIZE - 4, DIE_SIZE - 4);
     }
 
-    ctx.fillStyle = isHeld ? "#dfffe7" : "#f6fbff";
+    ctx.fillStyle = palette.text;
     ctx.font = '600 24px "JetBrains Mono", "DM Mono", "Fira Code", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -144,6 +178,37 @@ function scheduleDraw() {
   animationFrame = window.requestAnimationFrame(drawDice);
 }
 
+function getDieIndexFromPreviewPointer(event: PointerEvent) {
+  const canvas = canvasEl.value;
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  const localX = event.clientX - rect.left;
+  const localY = event.clientY - rect.top;
+  const hitYStart = DIE_PADDING - DIE_TOGGLE_TOLERANCE;
+  const hitYEnd = DIE_PADDING + DIE_SIZE + DIE_TOGGLE_TOLERANCE;
+  if (localY < hitYStart || localY > hitYEnd) return null;
+
+  for (let idx = 0; idx < DIE_COUNT; idx += 1) {
+    const dieStart = DIE_PADDING + idx * (DIE_SIZE + DIE_SPACING);
+    const dieEnd = dieStart + DIE_SIZE;
+    if (localX >= dieStart - DIE_TOGGLE_TOLERANCE && localX <= dieEnd + DIE_TOGGLE_TOLERANCE) {
+      return idx;
+    }
+  }
+  return null;
+}
+
+function handleScoreDicePointerDown(event: PointerEvent) {
+  if (!canToggleHolds.value) return;
+  const dieIndex = getDieIndexFromPreviewPointer(event);
+  if (dieIndex === null) return;
+  const dieValue = diceValues.value[dieIndex];
+  if (typeof dieValue !== "number") return;
+  store.toggleHold(dieIndex);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 onMounted(() => {
   textureImage.onload = () => scheduleDraw();
   textureImage.onerror = () => scheduleDraw();
@@ -167,6 +232,25 @@ watch([diceValues, holds], scheduleDraw, { immediate: true });
   gap: 6px;
 }
 
+.score-dice-canvas-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.score-dice-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(223, 233, 255, 0.92);
+  background: linear-gradient(180deg, rgba(5, 13, 24, 0.75), rgba(5, 13, 24, 0.7));
+  border-radius: 16px;
+  pointer-events: none;
+  letter-spacing: 0.04em;
+}
+
 .score-dice-canvas {
   width: 320px;
   height: 76px;
@@ -174,6 +258,19 @@ watch([diceValues, holds], scheduleDraw, { immediate: true });
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(3, 14, 27, 0.75);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  touch-action: manipulation;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.score-dice-canvas-wrap.disabled .score-dice-canvas {
+  cursor: not-allowed;
+  opacity: 0.82;
+}
+
+.score-dice-canvas:focus-visible {
+  outline: none;
 }
 
 .score-dice-preview .label {
