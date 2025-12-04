@@ -26,6 +26,7 @@ export default defineConfig({
         short_name: "Big Monte Dice Poker",
         description: "Vue 3 + Dice-Box PWA dice poker game.",
         display: "standalone",
+        orientation: "portrait",
         background_color: "#0b1020",
         theme_color: "#0b1020",
         categories: ["games", "entertainment"],

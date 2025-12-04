@@ -25,3 +25,18 @@ setupPWAUpdatePrompt(() => {
 });
 
 setupInstallPrompt();
+
+const enforcePortraitOrientation = async () => {
+  const lock = screen.orientation?.lock;
+  if (typeof lock !== 'function') {
+    return;
+  }
+
+  try {
+    await lock.call(screen.orientation, 'portrait');
+  } catch (err) {
+    console.info('Unable to lock screen orientation to portrait mode.', err);
+  }
+};
+
+enforcePortraitOrientation();

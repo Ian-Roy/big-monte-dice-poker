@@ -18,6 +18,83 @@ export type DiceServiceSnapshot = {
 type ChangeListener = (snapshot: DiceServiceSnapshot) => void;
 
 const MAX_ROLLS_PER_ROUND = 3;
+const DIE_COUNT = 5;
+
+type NormalizedDie = Pick<GameDie, 'value' | 'sides' | 'groupId' | 'rollId'>;
+
+export function mergeRollResults({
+  previous,
+  results,
+  rerollIndices
+}: {
+  previous: GameDie[];
+  results: NormalizedDie[];
+  rerollIndices: number[];
+}) {
+  const next = previous.map((die) => ({ ...die }));
+  const rerollQueue = [...rerollIndices];
+  const usedIndices = new Set<number>();
+  const idToIndex = new Map<string, number>();
+
+  const idKey = (die: { groupId: string; rollId: string }) => `${die.groupId}|${die.rollId}`;
+
+  next.forEach((die, idx) => {
+    idToIndex.set(idKey(die), idx);
+  });
+
+  const takeTargetIndex = () => {
+    if (rerollQueue.length) {
+      const idx = rerollQueue.shift()!;
+      usedIndices.add(idx);
+      return idx;
+    }
+    const fallback = next.findIndex((die, idx) => !usedIndices.has(idx) && die && !die.held);
+    if (fallback >= 0) {
+      usedIndices.add(fallback);
+      return fallback;
+    }
+    return null;
+  };
+
+  results.forEach((die) => {
+    const matchIdx = idToIndex.get(idKey(die));
+    if (typeof matchIdx === 'number') {
+      next[matchIdx] = { ...next[matchIdx], value: die.value, sides: die.sides };
+      usedIndices.add(matchIdx);
+      return;
+    }
+    const targetIdx = takeTargetIndex();
+    if (targetIdx === null) return;
+    next[targetIdx] = {
+      index: targetIdx,
+      value: die.value,
+      sides: die.sides,
+      held: false,
+      groupId: die.groupId,
+      rollId: die.rollId
+    };
+  });
+
+  return Array.from({ length: DIE_COUNT }, (_, idx) =>
+    next[idx] ? { ...next[idx], index: idx } : buildEmptyDie(idx, `${Date.now()}`)
+  );
+}
+
+function buildEmptyDie(index: number, seed?: string): GameDie {
+  const suffix = seed ? `${index}-${seed}` : `${index}`;
+  return {
+    index,
+    value: 0,
+    sides: 6,
+    held: false,
+    groupId: '-1',
+    rollId: `placeholder-${suffix}`
+  };
+}
+
+function buildEmptyDice(): GameDie[] {
+  return Array.from({ length: DIE_COUNT }, (_, index) => buildEmptyDie(index));
+}
 
 export class DiceService {
   private diceBox: any;
@@ -136,7 +213,7 @@ export class DiceService {
     const currentIds = this.dice.map((die) => die.rollId);
     this.rollsThisRound = 0;
     this.rolling = false;
-    this.dice = this.buildEmptyDice();
+    this.dice = buildEmptyDice();
     this.pendingRerollIndices = [];
     console.info('[DiceService] startNewRound -> reset state');
     if (currentIds.length && this.diceBox?.setHeldState) {
@@ -153,9 +230,12 @@ export class DiceService {
     this.rolling = true;
     this.pendingRerollIndices = [];
     this.emitChange();
-    console.info('[DiceService] rollAll -> roll 5d6', { rollsThisRound: this.rollsThisRound });
+    console.info(`[DiceService] rollAll -> roll ${DIE_COUNT}d6`, {
+      rollsThisRound: this.rollsThisRound,
+      diceCount: DIE_COUNT
+    });
     try {
-      await this.diceBox.roll('5d6');
+      await this.diceBox.roll(`${DIE_COUNT}d6`);
     } catch (err) {
       this.rolling = false;
       this.rollsThisRound = Math.max(0, this.rollsThisRound - 1);
@@ -257,7 +337,7 @@ export class DiceService {
       return;
     }
 
-    const rawMapped = rawDice.slice(0, 5).map((die: any) => {
+    const rawMapped = rawDice.slice(0, DIE_COUNT).map((die: any) => {
       const { groupId, rollId } = this.normalizeIds(die);
       return {
         value: this.normalizeValue(die.value),
@@ -279,46 +359,11 @@ export class DiceService {
         rollId: die.rollId
       }));
     } else {
-      const next = [...this.dice];
-      const pending = [...this.pendingRerollIndices];
-
-      rawMapped.forEach((die) => {
-        const matchIdx = next.findIndex(
-          (d) => d && d.groupId === die.groupId && d.rollId === die.rollId
-        );
-        if (matchIdx >= 0) {
-          next[matchIdx] = { ...next[matchIdx], value: die.value, sides: die.sides };
-        } else {
-          // Map unexpected IDs to the indices we requested, in order; fallback to first unlocked.
-          const targetIdx = pending.length ? pending.shift()! : next.findIndex((d) => d && !d.held);
-          console.warn('[DiceService] reroll result had no matching die; reassigning', {
-            die,
-            targetIdx
-          });
-          const safeIdx = targetIdx >= 0 ? targetIdx : 0;
-          next[targetIdx] = {
-            index: safeIdx,
-            value: die.value,
-            sides: die.sides,
-            held: false,
-            groupId: die.groupId,
-            rollId: die.rollId
-          };
-        }
+      this.dice = mergeRollResults({
+        previous: this.dice,
+        results: rawMapped,
+        rerollIndices: this.pendingRerollIndices
       });
-
-      this.dice = next.map((die, idx) =>
-        die
-          ? { ...die, index: idx }
-          : {
-              index: idx,
-              value: 0,
-              sides: 6,
-              held: false,
-              groupId: '-1',
-              rollId: `placeholder-${idx}-${Date.now()}`
-            }
-      );
     }
 
     this.pendingRerollIndices = [];
@@ -424,17 +469,6 @@ export class DiceService {
     if (num < 1) return 0;
     if (num > 6) return Math.round(num) % 6 || 6;
     return Math.round(num);
-  }
-
-  private buildEmptyDice(): GameDie[] {
-    return Array.from({ length: 5 }, (_, index) => ({
-      index,
-      value: 0,
-      sides: 6,
-      held: false,
-      groupId: '-1',
-      rollId: `placeholder-${index}`
-    }));
   }
 
   private handlePickedDie(hit: { hit?: boolean; rollId?: string | number }) {

@@ -47,6 +47,7 @@ Practical notes for integrating and operating `@3d-dice/dice-box` in this projec
 - Size: `scale` in DiceService config (current: 10) increases dice size; adjust viewport height if needed.
 - Speed: `delay` (ms before starting physics) can make rolls feel snappier (current: 6).
 - Theme: default theme pulled from `assets/dice-box/themes/default/`; swap `theme` in DiceService config or copy a new theme into `themes/` and update `assetPath` as needed.
+- Locking/re-roll merge: DiceService now normalizes roll results through `mergeRollResults`, keyed by `{groupId, rollId}` when possible and then by the reroll request order (`pendingRerollIndices`). Held dice keep their values and rollIds; unexpected/missing results fall back to the first available unlocked index. This prevents UI “held” flags from drifting when Dice-Box returns dice in a different order.
 
 ## Troubleshooting
 - **Missing faces.json/faces.png in dev**: ensure `src/assets/dice-box/faces.*` exist; run `yarn gen:dice-sprites`.
