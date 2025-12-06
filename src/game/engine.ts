@@ -24,6 +24,7 @@ export type ScoreCategoryState = {
   scored: boolean;
   score: number | null;
   scoredDice: number[] | null;
+  roundScored: number | null;
 };
 
 export type GameTotals = {
@@ -153,9 +154,11 @@ export class GameEngine {
 
     const dice = this.requireFullDice();
     const score = computeCategoryScore(key, dice);
+    const roundNumber = this.state.currentRound;
     cat.score = score;
     cat.scored = true;
     cat.scoredDice = [...dice];
+    cat.roundScored = roundNumber;
 
     this.updateUpperBonus();
     this.recomputeTotals();
@@ -191,6 +194,7 @@ export class GameEngine {
       bonusCat.score = null;
       bonusCat.scored = false;
       bonusCat.scoredDice = null;
+      bonusCat.roundScored = null;
       return;
     }
 
@@ -198,6 +202,7 @@ export class GameEngine {
     bonusCat.score = upperTotal >= this.config.upperBonusThreshold ? this.config.upperBonusValue : 0;
     bonusCat.scored = true;
     bonusCat.scoredDice = null;
+    bonusCat.roundScored = null;
   }
 
   private recomputeTotals() {
@@ -273,7 +278,8 @@ export class GameEngine {
       holds: [...this.state.holds],
       categories: this.state.categories.map((cat) => ({
         ...cat,
-        scoredDice: cat.scoredDice ? [...cat.scoredDice] : null
+        scoredDice: cat.scoredDice ? [...cat.scoredDice] : null,
+        roundScored: cat.roundScored ?? null
       })),
       totals: { ...this.state.totals }
     };
@@ -316,12 +322,66 @@ export function computeCategoryScore(key: CategoryKey, dice: number[]) {
 
 export function buildScoreCategories(): ScoreCategoryState[] {
   return [
-    { key: 'ones', label: 'Ones', score: null, scored: false, section: 'upper', interactive: true, scoredDice: null },
-    { key: 'twos', label: 'Twos', score: null, scored: false, section: 'upper', interactive: true, scoredDice: null },
-    { key: 'threes', label: 'Threes', score: null, scored: false, section: 'upper', interactive: true, scoredDice: null },
-    { key: 'fours', label: 'Fours', score: null, scored: false, section: 'upper', interactive: true, scoredDice: null },
-    { key: 'fives', label: 'Fives', score: null, scored: false, section: 'upper', interactive: true, scoredDice: null },
-    { key: 'sixes', label: 'Sixes', score: null, scored: false, section: 'upper', interactive: true, scoredDice: null },
+    {
+      key: 'ones',
+      label: 'Ones',
+      score: null,
+      scored: false,
+      section: 'upper',
+      interactive: true,
+      scoredDice: null,
+      roundScored: null
+    },
+    {
+      key: 'twos',
+      label: 'Twos',
+      score: null,
+      scored: false,
+      section: 'upper',
+      interactive: true,
+      scoredDice: null,
+      roundScored: null
+    },
+    {
+      key: 'threes',
+      label: 'Threes',
+      score: null,
+      scored: false,
+      section: 'upper',
+      interactive: true,
+      scoredDice: null,
+      roundScored: null
+    },
+    {
+      key: 'fours',
+      label: 'Fours',
+      score: null,
+      scored: false,
+      section: 'upper',
+      interactive: true,
+      scoredDice: null,
+      roundScored: null
+    },
+    {
+      key: 'fives',
+      label: 'Fives',
+      score: null,
+      scored: false,
+      section: 'upper',
+      interactive: true,
+      scoredDice: null,
+      roundScored: null
+    },
+    {
+      key: 'sixes',
+      label: 'Sixes',
+      score: null,
+      scored: false,
+      section: 'upper',
+      interactive: true,
+      scoredDice: null,
+      roundScored: null
+    },
     {
       key: 'upper-bonus',
       label: 'Upper Bonus',
@@ -329,7 +389,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'bonus',
       interactive: false,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'three-kind',
@@ -338,7 +399,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'four-kind',
@@ -347,7 +409,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'full-house',
@@ -356,7 +419,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'small-straight',
@@ -365,7 +429,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'large-straight',
@@ -374,7 +439,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'yahtzee',
@@ -383,7 +449,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     },
     {
       key: 'chance',
@@ -392,7 +459,8 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       scored: false,
       section: 'lower',
       interactive: true,
-      scoredDice: null
+      scoredDice: null,
+      roundScored: null
     }
   ];
 }

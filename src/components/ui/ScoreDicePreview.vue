@@ -11,7 +11,6 @@
         <span>{{ canvasOverlayText }}</span>
       </div>
     </div>
-    <div class="label">Current roll</div>
   </div>
 </template>
 
@@ -41,9 +40,9 @@ const diffuseUrl = new URL(
   "../../assets/dice-box/diffuse-light.png",
   import.meta.url
 ).href;
-const DIE_SIZE = 48;
-const DIE_SPACING = 10;
-const DIE_PADDING = 12;
+const DIE_SIZE = 40;
+const DIE_SPACING = 8;
+const DIE_PADDING = 10;
 const DIE_COUNT = 5;
 const DIE_TOGGLE_TOLERANCE = 8;
 const DICE_PREVIEW_COLORS = {
@@ -125,7 +124,7 @@ function drawDice() {
     }
 
     ctx.fillStyle = palette.text;
-    ctx.font = '600 24px "JetBrains Mono", "DM Mono", "Fira Code", monospace';
+    ctx.font = '600 20px "JetBrains Mono", "DM Mono", "Fira Code", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(
@@ -229,7 +228,6 @@ watch([diceValues, holds], scheduleDraw, { immediate: true });
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
 }
 
 .score-dice-canvas-wrap {
@@ -242,22 +240,22 @@ watch([diceValues, holds], scheduleDraw, { immediate: true });
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: rgba(223, 233, 255, 0.92);
-  background: linear-gradient(180deg, rgba(5, 13, 24, 0.75), rgba(5, 13, 24, 0.7));
-  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(5, 13, 24, 0.82), rgba(5, 13, 24, 0.75));
+  border-radius: 14px;
   pointer-events: none;
   letter-spacing: 0.04em;
 }
 
 .score-dice-canvas {
-  width: 320px;
-  height: 76px;
-  border-radius: 16px;
+  width: 252px;
+  height: 60px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(3, 14, 27, 0.75);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   touch-action: manipulation;
   outline: none;
@@ -273,10 +271,4 @@ watch([diceValues, holds], scheduleDraw, { immediate: true });
   outline: none;
 }
 
-.score-dice-preview .label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.85);
-}
 </style>

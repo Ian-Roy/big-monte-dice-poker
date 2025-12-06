@@ -10,24 +10,40 @@
         </div>
         <ScoreDicePreview class="top-dice-preview" />
       </div>
-      <div
-        class="layer-toggle-zone"
-        role="button"
-        tabindex="0"
-        @click="toggleDiceVisibility"
-        @keydown.enter.prevent="toggleDiceVisibility"
-        @keydown.space.prevent="toggleDiceVisibility"
-      >
-        <div class="layer-pill-group">
-          <span class="layer-pill" :class="{ active: diceVisibility === 'visible' }">Dice layer</span>
-          <span class="layer-pill" :class="{ active: diceVisibility === 'hidden' }">Score card</span>
-        </div>
-        <span class="layer-toggle-label">{{ diceToggleLabel }}</span>
+      <div class="layer-control-row">
+        <button
+          type="button"
+          class="layer-control"
+          :class="{ active: diceVisibility === 'visible' }"
+          aria-pressed="diceVisibility === 'visible'"
+          @click="toggleDiceVisibility"
+        >
+          Dice layer
+        </button>
+        <button
+          type="button"
+          class="layer-control"
+          :class="{ active: activePane === 'score' }"
+          aria-pressed="activePane === 'score'"
+          @click="activePane = 'score'"
+        >
+          Score card
+        </button>
+        <button
+          type="button"
+          class="layer-control"
+          :class="{ active: activePane === 'summary' }"
+          aria-pressed="activePane === 'summary'"
+          @click="activePane = 'summary'"
+        >
+          Game summary
+        </button>
       </div>
     </div>
     <main class="layout">
       <section class="pane score-card">
-        <ScoreTable @select="handleSelect" />
+        <ScoreTable v-if="activePane === 'score'" @select="handleSelect" />
+        <EndGameSummary v-else />
       </section>
     </main>
     <DiceServiceBridge />
@@ -53,6 +69,7 @@ import ScoreTable from './components/ui/ScoreTable.vue';
 import ConfirmDialog from './components/ui/ConfirmDialog.vue';
 import ToastStack from './components/ui/ToastStack.vue';
 import ScoreDicePreview from './components/ui/ScoreDicePreview.vue';
+import EndGameSummary from './components/ui/EndGameSummary.vue';
 import type { CategoryKey } from './game/engine';
 import { useGameStore } from './stores/gameStore';
 
@@ -70,8 +87,8 @@ const shellEl = ref<HTMLElement | null>(null);
 const controlsEl = ref<HTMLElement | null>(null);
 const diceLayerBounds = ref<DiceLayerBounds | null>(null);
 const diceVisibility = ref<'visible' | 'hidden'>('visible');
+const activePane = ref<'score' | 'summary'>('score');
 const lastDiceBounds = ref<DiceLayerBounds | null>(null);
-const totals = computed(() => store.totals);
 const handleWindowResize = () => updateDiceLayerBounds(true);
 
 const pendingCategory = ref<CategoryKey | null>(null);
@@ -134,10 +151,6 @@ function showDice() {
   diceVisibility.value = 'visible';
   nextTick(() => updateDiceLayerBounds());
 }
-
-const diceToggleLabel = computed(() =>
-  diceVisibility.value === 'visible' ? 'Hide dice' : 'Show dice'
-);
 
 function updateDiceLayerBounds(triggeredByResize = false) {
   const shell = shellEl.value;
@@ -250,11 +263,25 @@ watch(
 <style scoped>
 #app-shell {
   position: relative;
-  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100vw;
+  height: 100vh;
   margin: 0 auto;
-  padding: 12px 12px 40px;
+  padding: 6px 6px 40px;
   color: #e7edf2;
   min-height: 100vh;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+:global(html),
+:global(body) {
+  width: 100%;
+  margin: 0;
+  overflow-x: hidden;
 }
 
 .top-controls {
@@ -263,20 +290,22 @@ watch(
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 6px 0 10px;
+  gap: 6px;
+  padding: 2px 0 6px;
   backdrop-filter: blur(6px);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .header-panel {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   background: rgba(5, 14, 28, 0.85);
   border: 1px solid rgba(122, 211, 255, 0.35);
-  border-radius: 16px;
-  padding: 14px;
+  border-radius: 12px;
+  padding: 10px;
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42);
 }
 
@@ -284,66 +313,14 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .header-row .roll-bar {
   flex: 1;
-  min-width: 160px;
-  max-width: 320px;
-}
-
-.layer-toggle-zone {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(7, 26, 44, 0.76);
-  cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
-}
-
-.layer-toggle-zone:focus-visible,
-.layer-toggle-zone:hover {
-  border-color: rgba(146, 227, 255, 0.8);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
-}
-
-.layer-pill-group {
-  display: flex;
-  gap: 8px;
-}
-
-.layer-pill {
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.layer-pill.active {
-  background: rgba(34, 197, 94, 0.25);
-  color: #a3ffe1;
-}
-
-.layer-toggle-label {
-  font-size: 13px;
-  color: #cde6ff;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.score-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  min-width: 120px;
+  max-width: 300px;
 }
 
 .top-dice-preview {
@@ -352,9 +329,57 @@ watch(
   display: flex;
 }
 
+.layer-control-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  justify-content: center;
+}
+
+.layer-control {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(7, 26, 44, 0.85);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  white-space: nowrap;
+}
+
+.layer-control.active {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #b7e2ff;
+}
+
+.layer-control:focus-visible {
+  outline: none;
+  border-color: rgba(146, 227, 255, 0.8);
+}
+
+.score-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
 .layout {
   display: grid;
   gap: 8px;
+  width: 100%;
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pane {
@@ -365,5 +390,21 @@ watch(
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   position: relative;
   z-index: 6;
+}
+
+@media (max-width: 640px) {
+  .header-row .roll-bar {
+    max-width: none;
+  }
+
+  .layer-control-row {
+    justify-content: flex-start;
+  }
+
+  .layer-control {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+  }
 }
 </style>
