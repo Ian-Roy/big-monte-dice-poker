@@ -160,35 +160,18 @@ function updateDiceLayerBounds(triggeredByResize = false) {
 
   const controlsHeight = controlsEl.value?.getBoundingClientRect().height ?? 0;
   const safeTop = controlsHeight + 8;
-  const isMobile = window.innerWidth <= 900;
-
-  let nextBounds: DiceLayerBounds;
-
-  if (isMobile) {
-    const width = window.innerWidth;
-    const top = safeTop;
-    const height = Math.max(window.innerHeight - safeTop, 360);
-    nextBounds = {
-      width,
-      height,
-      left: 0,
-      top
-    };
-  } else {
-    const targetWidth = Math.min(window.innerWidth, rect.width);
-    const left =
-      targetWidth < window.innerWidth ? rect.left + (rect.width - targetWidth) / 2 : 0;
-    const top = Math.max(rect.top, 0) + safeTop;
-    const availableHeight = Math.max(rect.height - safeTop, 0);
-    const viewportHeight = Math.max(window.innerHeight - Math.max(rect.top, 0) - safeTop, 0);
-    const targetHeight = Math.max(Math.min(availableHeight, viewportHeight), 420);
-    nextBounds = {
-      width: targetWidth,
-      height: targetHeight,
-      left: Math.max(left, 0),
-      top
-    };
-  }
+  const minHeight = window.innerWidth <= 900 ? 360 : 420;
+  const width = Math.min(window.innerWidth, rect.width);
+  const left =
+    width < window.innerWidth ? rect.left + (rect.width - width) / 2 : 0;
+  const top = Math.max(rect.top, 0) + safeTop;
+  const height = Math.max(window.innerHeight - safeTop, minHeight);
+  const nextBounds: DiceLayerBounds = {
+    width,
+    height,
+    left: Math.max(left, 0),
+    top
+  };
 
   const sizeChanged =
     !lastDiceBounds.value ||
@@ -370,6 +353,7 @@ watch(
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  min-height: 0;
 }
 
 .layout {
@@ -380,6 +364,8 @@ watch(
   overflow-y: auto;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  min-height: 0;
+  overflow-x: hidden;
 }
 
 .pane {
