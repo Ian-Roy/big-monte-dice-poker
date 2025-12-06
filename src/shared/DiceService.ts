@@ -36,6 +36,7 @@ export function mergeRollResults({
 }) {
   const next = previous.map((die) => ({ ...die }));
   const rerollQueue = [...rerollIndices];
+   const rerollIndexSet = new Set(rerollIndices);
   const usedIndices = new Set<number>();
   const idToIndex = new Map<string, number>();
 
@@ -62,7 +63,19 @@ export function mergeRollResults({
   results.forEach((die) => {
     const matchIdx = idToIndex.get(idKey(die));
     if (typeof matchIdx === 'number') {
-      next[matchIdx] = { ...next[matchIdx], value: die.value, sides: die.sides };
+      const prevDie = next[matchIdx];
+      const updatingHeld = prevDie?.held && !rerollIndexSet.has(matchIdx);
+      if (updatingHeld) {
+        // Defensive guard: ignore stray results for held dice we did not ask to reroll.
+        console.warn('[DiceService] mergeRollResults: ignoring result for held die', {
+          index: matchIdx,
+          rollId: prevDie.rollId,
+          groupId: prevDie.groupId
+        });
+        usedIndices.add(matchIdx);
+        return;
+      }
+      next[matchIdx] = { ...prevDie, value: die.value, sides: die.sides };
       usedIndices.add(matchIdx);
       return;
     }
@@ -284,7 +297,9 @@ export class DiceService {
     });
 
     // Remember which indices we asked to reroll; if Dice-Box changes IDs we map by this order.
-    this.pendingRerollIndices = toReroll.map((d) => d.index);
+    this.pendingRerollIndices = toReroll
+      .filter((die) => die.rollId && die.groupId && die.value > 0)
+      .map((d) => d.index);
 
     try {
       await this.diceBox.reroll(targets, { remove: true, newStartPoint: true });
@@ -355,6 +370,9 @@ export class DiceService {
     const isFirstRoll = this.rollsThisRound === 1 || this.dice.length === 0;
 
     if (isFirstRoll) {
+      console.debug('[DiceService] roll complete (first roll)', {
+        diceCount: rawMapped.length
+      });
       this.dice = rawMapped.map((die, index) => ({
         index,
         value: die.value,
@@ -364,6 +382,10 @@ export class DiceService {
         rollId: die.rollId
       }));
     } else {
+      console.debug('[DiceService] roll complete (reroll)', {
+        resultsCount: rawMapped.length,
+        pendingRerollIndices: this.pendingRerollIndices
+      });
       this.dice = mergeRollResults({
         previous: this.dice,
         results: rawMapped,
