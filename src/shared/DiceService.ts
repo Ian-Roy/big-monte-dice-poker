@@ -447,6 +447,17 @@ export class DiceService {
       tolerance
     };
 
+    // If the pointer is outside the canvas plus tolerance, bail early to avoid stray picks.
+    const outside =
+      pointerX < canvasRect.left - tolerance ||
+      pointerX > canvasRect.right + tolerance ||
+      pointerY < canvasRect.top - tolerance ||
+      pointerY > canvasRect.bottom + tolerance;
+    if (outside) {
+      log('debug', 'skip pointer outside canvas', commonLog);
+      return null;
+    }
+
     if (typeof this.diceBox.pickDieAt === 'function') {
       const result = this.diceBox.pickDieAt(clampedX, clampedY);
       if (result?.hit) {
