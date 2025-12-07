@@ -113,7 +113,13 @@ export const useGameStore = defineStore('game', () => {
       lastError.value = 'Dice service not attached';
       return;
     }
-    await diceService.value.rollAll();
+    try {
+      await diceService.value.rollAll();
+    } catch (err) {
+      const message = (err as Error)?.message ?? 'Roll failed';
+      lastError.value = `Roll failed: ${message}`;
+      console.error('[GameStore] rollAll failed', err);
+    }
   }
 
   async function rerollUnheld() {
@@ -122,7 +128,13 @@ export const useGameStore = defineStore('game', () => {
       lastError.value = 'Dice service not attached';
       return;
     }
-    await diceService.value.rerollUnheld();
+    try {
+      await diceService.value.rerollUnheld();
+    } catch (err) {
+      const message = (err as Error)?.message ?? 'Re-roll failed';
+      lastError.value = `Re-roll failed: ${message}`;
+      console.error('[GameStore] rerollUnheld failed', err);
+    }
   }
 
   function toggleHold(index: number) {

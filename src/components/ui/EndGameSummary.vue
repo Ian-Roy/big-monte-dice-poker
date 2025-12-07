@@ -15,7 +15,16 @@
 
     <div class="summary-actions">
       <button type="button" class="ghost-button" @click="restartGame">Start new game</button>
+      <button
+        type="button"
+        class="ghost-button ghost-button--secondary"
+        :disabled="swUpdating"
+        @click="refreshPWA"
+      >
+        {{ swUpdating ? 'Refreshing PWA…' : 'Refresh PWA' }}
+      </button>
     </div>
+    <p v-if="swUpdateMessage" class="update-status">{{ swUpdateMessage }}</p>
     <section class="final-score">
       <header>
         <p class="section-label">Final score details</p>
@@ -71,10 +80,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import { useDiceSprites } from '../../composables/useDiceSprites';
 import { useGameStore } from '../../stores/gameStore';
+import { requestServiceWorkerRefresh } from '../../pwa/ServiceWorkerManager';
 
 const store = useGameStore();
 const sprites = useDiceSprites();
@@ -105,6 +115,9 @@ const auditEntries = computed(() => {
 
 const SPRITE_SCALE = 0.36;
 
+const swUpdating = ref(false);
+const swUpdateMessage = ref('');
+
 function faceStyle(value: number | null) {
   if (typeof value !== 'number') return null;
   const frame = sprites.frames[value];
@@ -124,6 +137,29 @@ function faceStyle(value: number | null) {
 function restartGame() {
   if (typeof window !== 'undefined') {
     window.location.reload();
+  }
+}
+
+async function refreshPWA() {
+  if (swUpdating.value) return;
+  swUpdating.value = true;
+  swUpdateMessage.value = '';
+  try {
+    const result = await requestServiceWorkerRefresh();
+    if (result === 'unsupported') {
+      swUpdateMessage.value = 'PWA updates are not supported in this browser.';
+    } else if (result === 'missing') {
+      swUpdateMessage.value = 'No service worker found. Reloading to install…';
+      setTimeout(() => window.location.reload(), 200);
+    } else {
+      swUpdateMessage.value = 'Update applied. Reloading…';
+      setTimeout(() => window.location.reload(), 200);
+    }
+  } catch (err) {
+    const message = (err as Error)?.message ?? 'Unknown error';
+    swUpdateMessage.value = `Update failed: ${message}`;
+  } finally {
+    swUpdating.value = false;
   }
 }
 </script>
@@ -150,6 +186,8 @@ function restartGame() {
 .summary-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ghost-button {
@@ -165,11 +203,26 @@ function restartGame() {
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
+.ghost-button--secondary {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.ghost-button--secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .ghost-button:hover,
 .ghost-button:focus-visible {
   border-color: rgba(146, 227, 255, 0.8);
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+.update-status {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .status-label {

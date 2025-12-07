@@ -18,7 +18,7 @@ export default defineConfig({
         ],
         navigateFallback: "index.html",
         clientsClaim: true,
-        skipWaiting: false, // we'll prompt the user to reload
+        skipWaiting: true,
         cleanupOutdatedCaches: true,
       },
       manifest: {
