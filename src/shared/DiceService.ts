@@ -126,6 +126,8 @@ export class DiceService {
   private windowPointerListener: ((ev: PointerEvent) => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private heldVisualsWarned = false;
+  private canvasResizeLocked = false;
+  private canvasResizeWarned = false;
 
   constructor(containerSelector = '#dice-box') {
     this.containerSelector = containerSelector;
@@ -561,7 +563,7 @@ export class DiceService {
   }
 
   private syncCanvasSize() {
-    if (!this.containerEl) return;
+    if (!this.containerEl || this.canvasResizeLocked) return;
     const canvas = this.containerEl.querySelector('canvas') as HTMLCanvasElement | null;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -572,8 +574,17 @@ export class DiceService {
     if (!desiredWidth || !desiredHeight) return;
     if (desiredWidth === currentWidth && desiredHeight === currentHeight) return;
 
-    canvas.width = desiredWidth;
-    canvas.height = desiredHeight;
+    try {
+      canvas.width = desiredWidth;
+      canvas.height = desiredHeight;
+    } catch (err) {
+      this.canvasResizeLocked = true;
+      if (!this.canvasResizeWarned) {
+        console.warn('[DiceService] syncCanvasSize aborted after canvas lock', err);
+        this.canvasResizeWarned = true;
+      }
+      return;
+    }
     console.info('[DiceService] syncCanvasSize', {
       desiredWidth,
       desiredHeight,
