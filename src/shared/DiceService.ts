@@ -3,6 +3,8 @@ import DiceBox from '@3d-dice/dice-box';
 const DICE_BOX_DEFAULT_COLOR = '#3b82f6';
 const DICE_BOX_HELD_COLOR = '#22c55e';
 
+export const DICE_CONTEXT_LOST_EVENT = 'dice-service:context-lost';
+
 export type GameDie = {
   index: number;
   value: number;
@@ -128,6 +130,8 @@ export class DiceService {
   private heldVisualsWarned = false;
   private canvasResizeLocked = false;
   private canvasResizeWarned = false;
+  private lastCanvasSize: { width: number; height: number } | null = null;
+  private contextLostNotified = false;
 
   constructor(containerSelector = '#dice-box') {
     this.containerSelector = containerSelector;
@@ -206,6 +210,7 @@ export class DiceService {
     this.windowPointerListener = null;
     this.diceBox = undefined;
     this.listeners = [];
+    this.lastCanvasSize = null;
   }
 
   onChange(listener: ChangeListener) {
@@ -564,38 +569,50 @@ export class DiceService {
 
   private syncCanvasSize() {
     if (!this.containerEl || this.canvasResizeLocked) return;
-    const canvas = this.containerEl.querySelector('canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const rect = this.containerEl.getBoundingClientRect();
     const desiredWidth = Math.round(rect.width);
     const desiredHeight = Math.round(rect.height);
-    const currentWidth = canvas.width || 0;
-    const currentHeight = canvas.height || 0;
     if (!desiredWidth || !desiredHeight) return;
-    if (desiredWidth === currentWidth && desiredHeight === currentHeight) return;
+
+    const changed =
+      !this.lastCanvasSize ||
+      this.lastCanvasSize.width !== desiredWidth ||
+      this.lastCanvasSize.height !== desiredHeight;
+    if (!changed) return;
+
+    this.lastCanvasSize = { width: desiredWidth, height: desiredHeight };
 
     try {
-      canvas.width = desiredWidth;
-      canvas.height = desiredHeight;
-    } catch (err) {
-      this.canvasResizeLocked = true;
-      if (!this.canvasResizeWarned) {
-        console.warn('[DiceService] syncCanvasSize aborted after canvas lock', err);
-        this.canvasResizeWarned = true;
-      }
-      return;
-    }
-    console.info('[DiceService] syncCanvasSize', {
-      desiredWidth,
-      desiredHeight,
-      currentWidth,
-      currentHeight
-    });
-    try {
       this.diceBox?.resize?.();
-    } catch {
-      // ignore if diceBox lacks resize
+    } catch (err) {
+      this.handleCanvasResizeError(err);
     }
+  }
+
+  private handleCanvasResizeError(err: unknown) {
+    this.canvasResizeLocked = true;
+    if (!this.canvasResizeWarned) {
+      console.warn('[DiceService] syncCanvasSize aborted after canvas lock', err);
+      this.canvasResizeWarned = true;
+    }
+    if (this.isDomException(err)) {
+      this.notifyContextLost('canvas-resize');
+    }
+  }
+
+  private isDomException(err: unknown): err is DOMException {
+    return typeof DOMException !== 'undefined' && err instanceof DOMException;
+  }
+
+  private notifyContextLost(reason: string) {
+    if (this.contextLostNotified) return;
+    this.contextLostNotified = true;
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent(DICE_CONTEXT_LOST_EVENT, {
+        detail: { reason }
+      })
+    );
   }
 
   private emitChange() {

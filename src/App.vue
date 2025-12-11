@@ -1,5 +1,5 @@
 <template>
-  <div id="app-shell" ref="shellEl">
+  <div id="app-shell" ref="shellEl" :class="{ 'orientation-locked': orientationLocked }">
     <DiceViewport :bounds="diceLayerBounds" :layer-mode="diceVisibility" />
 
     <div ref="controlsEl" class="top-controls">
@@ -55,6 +55,12 @@
       @cancel="clearDialog"
     />
     <ToastStack :toasts="toasts" />
+    <div v-if="orientationLocked" class="orientation-overlay">
+      <div class="orientation-overlay__card">
+        <h3>Rotate your device</h3>
+        <p>Big Monte Dice Poker only plays in portrait on mobile. Turn your device upright to keep rolling.</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -87,13 +93,21 @@ const shellEl = ref<HTMLElement | null>(null);
 const controlsEl = ref<HTMLElement | null>(null);
 const diceLayerBounds = ref<DiceLayerBounds | null>(null);
 const diceVisibility = ref<'visible' | 'hidden'>('visible');
+const desiredDiceVisibility = ref<'visible' | 'hidden'>(diceVisibility.value);
 const activePane = ref<'score' | 'summary'>('score');
 const lastDiceBounds = ref<DiceLayerBounds | null>(null);
-const handleWindowResize = () => updateDiceLayerBounds(true);
+const orientationLocked = ref(false);
+const isPortrait = ref(true);
+const handleWindowResize = () => {
+  evaluateOrientationLock();
+  updateDiceLayerBounds(true);
+};
 
 const pendingCategory = ref<CategoryKey | null>(null);
 const toasts = ref<string[]>([]);
 let resizeObserver: ResizeObserver | null = null;
+let orientationMedia: MediaQueryList | null = null;
+let orientationCleanup: (() => void) | null = null;
 
 const dialogTitle = computed(() => {
   if (!pendingCategory.value) return '';
@@ -153,6 +167,7 @@ function showDice() {
 }
 
 function updateDiceLayerBounds(triggeredByResize = false) {
+  if (orientationLocked.value) return;
   const shell = shellEl.value;
   if (!shell) return;
   const rect = shell.getBoundingClientRect();
@@ -208,6 +223,20 @@ function updateDiceLayerBounds(triggeredByResize = false) {
   }
 }
 
+function evaluateOrientationLock() {
+  if (typeof window === 'undefined') return;
+  if (!orientationMedia) {
+    orientationMedia = window.matchMedia('(orientation: portrait)');
+  }
+  const portrait = orientationMedia.matches;
+  const mobileViewport = window.innerWidth <= 900;
+  isPortrait.value = portrait;
+  const shouldLock = mobileViewport && !portrait;
+  if (orientationLocked.value !== shouldLock) {
+    orientationLocked.value = shouldLock;
+  }
+}
+
 onMounted(() => {
   nextTick(() => {
     updateDiceLayerBounds();
@@ -217,6 +246,18 @@ onMounted(() => {
       if (controlsEl.value) resizeObserver.observe(controlsEl.value);
     }
   });
+  if (typeof window !== 'undefined') {
+    orientationMedia = window.matchMedia('(orientation: portrait)');
+    const listener = () => evaluateOrientationLock();
+    if (typeof orientationMedia.addEventListener === 'function') {
+      orientationMedia.addEventListener('change', listener);
+      orientationCleanup = () => orientationMedia?.removeEventListener('change', listener);
+    } else {
+      orientationMedia.addListener(listener);
+      orientationCleanup = () => orientationMedia?.removeListener(listener);
+    }
+    evaluateOrientationLock();
+  }
   window.addEventListener('resize', handleWindowResize);
   window.addEventListener('scroll', updateDiceLayerBounds, { passive: true });
 });
@@ -226,6 +267,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateDiceLayerBounds);
   resizeObserver?.disconnect();
   resizeObserver = null;
+  orientationCleanup?.();
+  orientationCleanup = null;
 });
 
 watch(
@@ -241,6 +284,22 @@ watch(
     if (typeof val === 'string' && val) pushToast(val);
   }
 );
+
+watch(orientationLocked, (locked) => {
+  if (locked) {
+    desiredDiceVisibility.value = diceVisibility.value;
+    diceVisibility.value = 'hidden';
+  } else {
+    diceVisibility.value = desiredDiceVisibility.value;
+    nextTick(() => updateDiceLayerBounds());
+  }
+});
+
+watch(diceVisibility, (next) => {
+  if (!orientationLocked.value) {
+    desiredDiceVisibility.value = next;
+  }
+});
 </script>
 
 <style scoped>
@@ -376,6 +435,45 @@ watch(
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   position: relative;
   z-index: 6;
+}
+
+#app-shell.orientation-locked > :not(.orientation-overlay) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.orientation-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(3, 6, 12, 0.96);
+  z-index: 10000;
+  text-align: center;
+}
+
+.orientation-overlay__card {
+  max-width: 380px;
+  width: 100%;
+  background: rgba(10, 20, 35, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.55);
+}
+
+.orientation-overlay__card h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: #f0f9ff;
+}
+
+.orientation-overlay__card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
 }
 
 @media (max-width: 640px) {
