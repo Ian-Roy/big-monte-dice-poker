@@ -597,6 +597,10 @@ export class DiceService {
     }
     if (this.isDomException(err)) {
       this.notifyContextLost('canvas-resize');
+    } else if (err instanceof Error && err.message) {
+      this.notifyContextLost(`resize-error:${err.name || 'error'}`);
+    } else {
+      this.notifyContextLost('resize-error');
     }
   }
 

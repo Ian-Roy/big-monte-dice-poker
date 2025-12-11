@@ -45,6 +45,10 @@
         <span>Total</span>
         <span>{{ totals.grand }}</span>
       </div>
+      <div class="total-line round-line" aria-live="polite">
+        <span>Round</span>
+        <span>{{ state.currentRound }} / {{ state.maxRounds }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -62,6 +66,7 @@ const props = defineProps<{
 const store = useGameStore();
 const categories = computed(() => store.categories);
 const totals = computed(() => store.totals);
+const state = computed(() => store.engineState);
 
 const upper = computed(() => categories.value.filter((c) => c.section === 'upper' || c.key === 'upper-bonus'));
 const lower = computed(() => categories.value.filter((c) => c.section === 'lower'));
@@ -113,6 +118,16 @@ function onSelect(key: import('../../game/engine').CategoryKey) {
 .grand {
   font-weight: 700;
   color: #ffc857;
+}
+
+.round-line {
+  margin-top: 4px;
+  font-weight: 600;
+  color: #8bd0ff;
+}
+
+.round-line span:last-child {
+  font-variant-numeric: tabular-nums;
 }
 
 .score-table--disabled {
