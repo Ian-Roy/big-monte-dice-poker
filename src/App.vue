@@ -14,27 +14,27 @@
         <button
           type="button"
           class="layer-control"
-          :class="{ active: diceVisibility === 'visible' }"
-          aria-pressed="diceVisibility === 'visible'"
-          @click="toggleDiceVisibility"
+          :class="{ active: activeLayer === 'dice' }"
+          aria-pressed="activeLayer === 'dice'"
+          @click="setActiveLayer('dice')"
         >
           Dice layer
         </button>
         <button
           type="button"
           class="layer-control"
-          :class="{ active: activePane === 'score' }"
-          aria-pressed="activePane === 'score'"
-          @click="activePane = 'score'"
+          :class="{ active: activeLayer === 'score' }"
+          aria-pressed="activeLayer === 'score'"
+          @click="setActiveLayer('score')"
         >
           Score card
         </button>
         <button
           type="button"
           class="layer-control"
-          :class="{ active: activePane === 'summary' }"
-          aria-pressed="activePane === 'summary'"
-          @click="activePane = 'summary'"
+          :class="{ active: activeLayer === 'summary' }"
+          aria-pressed="activeLayer === 'summary'"
+          @click="setActiveLayer('summary')"
         >
           Game summary
         </button>
@@ -42,7 +42,7 @@
     </div>
     <main class="layout">
       <section class="pane score-card">
-        <ScoreTable v-if="activePane === 'score'" @select="handleSelect" />
+        <ScoreTable v-if="activeLayer !== 'summary'" @select="handleSelect" />
         <EndGameSummary v-else />
       </section>
     </main>
@@ -89,14 +89,18 @@ type DiceLayerBounds = {
   top: number;
 };
 
+type ActiveLayer = 'dice' | 'score' | 'summary';
+
 const shellEl = ref<HTMLElement | null>(null);
 const controlsEl = ref<HTMLElement | null>(null);
 const diceLayerBounds = ref<DiceLayerBounds | null>(null);
-const diceVisibility = ref<'visible' | 'hidden'>('visible');
-const desiredDiceVisibility = ref<'visible' | 'hidden'>(diceVisibility.value);
-const activePane = ref<'score' | 'summary'>('score');
 const lastDiceBounds = ref<DiceLayerBounds | null>(null);
 const orientationLocked = ref(false);
+const activeLayer = ref<ActiveLayer>('dice');
+const diceVisibility = computed<'visible' | 'hidden'>(() => {
+  if (orientationLocked.value) return 'hidden';
+  return activeLayer.value === 'dice' ? 'visible' : 'hidden';
+});
 const isPortrait = ref(true);
 const handleWindowResize = () => {
   evaluateOrientationLock();
@@ -156,14 +160,19 @@ function confirmScore() {
   }
 }
 
-function toggleDiceVisibility() {
-  diceVisibility.value = diceVisibility.value === 'visible' ? 'hidden' : 'visible';
+function setActiveLayer(layer: ActiveLayer) {
+  if (activeLayer.value === layer) {
+    if (layer === 'dice' && !orientationLocked.value) {
+      nextTick(() => updateDiceLayerBounds());
+    }
+    return;
+  }
+  activeLayer.value = layer;
   nextTick(() => updateDiceLayerBounds());
 }
 
 function showDice() {
-  diceVisibility.value = 'visible';
-  nextTick(() => updateDiceLayerBounds());
+  setActiveLayer('dice');
 }
 
 function updateDiceLayerBounds(triggeredByResize = false) {
@@ -286,18 +295,8 @@ watch(
 );
 
 watch(orientationLocked, (locked) => {
-  if (locked) {
-    desiredDiceVisibility.value = diceVisibility.value;
-    diceVisibility.value = 'hidden';
-  } else {
-    diceVisibility.value = desiredDiceVisibility.value;
+  if (!locked) {
     nextTick(() => updateDiceLayerBounds());
-  }
-});
-
-watch(diceVisibility, (next) => {
-  if (!orientationLocked.value) {
-    desiredDiceVisibility.value = next;
   }
 });
 </script>
