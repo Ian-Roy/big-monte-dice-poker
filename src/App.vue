@@ -40,9 +40,9 @@
         </button>
       </div>
     </div>
-    <main class="layout">
+    <main v-if="activeLayer !== 'dice'" class="layout">
       <section class="pane score-card">
-        <ScoreTable v-if="activeLayer !== 'summary'" @select="handleSelect" />
+        <ScoreTable v-if="activeLayer === 'score'" @select="handleSelect" />
         <EndGameSummary v-else />
       </section>
     </main>
