@@ -19,6 +19,10 @@ body {
   overscroll-behavior: contain;
 }
 
+body.dice-layer-locked {
+  overflow: hidden;
+}
+
 #app {
   width: 100%;
 }

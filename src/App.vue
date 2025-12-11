@@ -101,6 +101,7 @@ const diceVisibility = computed<'visible' | 'hidden'>(() => {
   if (orientationLocked.value) return 'hidden';
   return activeLayer.value === 'dice' ? 'visible' : 'hidden';
 });
+const diceScrollLocked = computed(() => !orientationLocked.value && activeLayer.value === 'dice');
 const isPortrait = ref(true);
 const handleWindowResize = () => {
   evaluateOrientationLock();
@@ -278,6 +279,9 @@ onBeforeUnmount(() => {
   resizeObserver = null;
   orientationCleanup?.();
   orientationCleanup = null;
+  if (typeof document !== 'undefined') {
+    document.body.classList.remove('dice-layer-locked');
+  }
 });
 
 watch(
@@ -299,6 +303,21 @@ watch(orientationLocked, (locked) => {
     nextTick(() => updateDiceLayerBounds());
   }
 });
+
+watch(
+  diceScrollLocked,
+  (locked) => {
+    if (typeof document === 'undefined') return;
+    const body = document.body;
+    if (!body) return;
+    if (locked) {
+      body.classList.add('dice-layer-locked');
+    } else {
+      body.classList.remove('dice-layer-locked');
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <style scoped>
