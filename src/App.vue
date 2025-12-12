@@ -101,7 +101,10 @@ const diceVisibility = computed<'visible' | 'hidden'>(() => {
   if (orientationLocked.value) return 'hidden';
   return activeLayer.value === 'dice' ? 'visible' : 'hidden';
 });
-const diceScrollLocked = computed(() => !orientationLocked.value && activeLayer.value === 'dice');
+const bodyScrollLocked = computed(() => {
+  if (orientationLocked.value) return false;
+  return activeLayer.value === 'dice' || activeLayer.value === 'score' || activeLayer.value === 'summary';
+});
 const isPortrait = ref(true);
 const handleWindowResize = () => {
   evaluateOrientationLock();
@@ -305,7 +308,7 @@ watch(orientationLocked, (locked) => {
 });
 
 watch(
-  diceScrollLocked,
+  bodyScrollLocked,
   (locked) => {
     if (typeof document === 'undefined') return;
     const body = document.body;
