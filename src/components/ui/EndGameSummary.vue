@@ -169,6 +169,8 @@ async function refreshPWA() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  min-width: 0;
 }
 
 .summary-header {
@@ -176,6 +178,12 @@ async function refreshPWA() {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.summary-header > div {
+  flex: 1 1 220px;
+  min-width: 0;
 }
 
 .summary-header h3 {
@@ -188,6 +196,7 @@ async function refreshPWA() {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+  width: 100%;
 }
 
 .ghost-button {
@@ -238,6 +247,7 @@ async function refreshPWA() {
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
+  text-align: right;
 }
 
 .round-indicator {
@@ -337,6 +347,7 @@ async function refreshPWA() {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .entry-round {
@@ -349,6 +360,8 @@ async function refreshPWA() {
 .entry-label {
   flex: 1;
   font-weight: 700;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .entry-score {
@@ -392,6 +405,20 @@ async function refreshPWA() {
 }
 
 @media (max-width: 640px) {
+  .summary-actions {
+    justify-content: flex-start;
+  }
+
+  .ghost-button {
+    flex: 1 1 180px;
+    text-align: center;
+  }
+
+  .summary-meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+
   .entry-header {
     flex-direction: column;
     align-items: flex-start;
