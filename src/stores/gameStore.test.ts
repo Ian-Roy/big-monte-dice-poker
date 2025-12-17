@@ -110,6 +110,11 @@ function createStubService(initial: DiceServiceSnapshot = baseSnapshot): StubSer
 describe('useGameStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    const storage = typeof window !== 'undefined' ? window.localStorage : null;
+    if (storage && typeof storage.removeItem === 'function') {
+      storage.removeItem('big-monte:game-saves');
+      storage.removeItem('big-monte:engine-state');
+    }
   });
 
   it('syncs engine rolls when dice service emits values', () => {
@@ -148,5 +153,61 @@ describe('useGameStore', () => {
     expect(store.engineState.currentRound).toBe(2);
     expect(stub.record.startCalls).toBe(1);
     expect(store.diceSnapshot.rollsThisRound).toBe(0);
+  });
+
+  it('creates up to 4 save slots and blocks the 5th', () => {
+    const store = useGameStore();
+
+    for (let idx = 0; idx < 4; idx += 1) {
+      const result = store.createNewGameSlot();
+      expect(result.ok).toBe(true);
+      expect(typeof store.activeSaveId).toBe('string');
+    }
+
+    expect(store.saveSlots.length).toBe(4);
+    expect(store.createNewGameSlot().ok).toBe(false);
+  });
+
+  it('loads a previously saved slot state', () => {
+    const store = useGameStore();
+    const stub = createStubService();
+
+    const first = store.createNewGameSlot();
+    expect(first.ok).toBe(true);
+    const firstId = store.activeSaveId;
+
+    store.attachDiceService(stub);
+    stub.emit(snapshotFor([1, 2, 3, 4, 5], 1));
+    store.scoreCategory('chance');
+    expect(store.engineState.totals.grand).toBe(15);
+
+    const second = store.createNewGameSlot();
+    expect(second.ok).toBe(true);
+    expect(store.engineState.totals.grand).toBe(0);
+
+    store.loadGameSlot(firstId);
+    expect(store.activeSaveId).toBe(firstId);
+    expect(store.engineState.totals.grand).toBe(15);
+  });
+
+  it('removes the active slot when quitting a game', () => {
+    const store = useGameStore();
+    const result = store.createNewGameSlot();
+    expect(result.ok).toBe(true);
+    const activeId = store.activeSaveId;
+
+    expect(store.quitActiveGame()).toBe(true);
+    expect(store.saveSlots.some((slot) => slot.id === activeId)).toBe(false);
+  });
+
+  it('clears finished games from save slots', () => {
+    const store = useGameStore();
+    const result = store.createNewGameSlot();
+    expect(result.ok).toBe(true);
+    expect(store.saveSlots.length).toBe(1);
+
+    store.saveSlots[0].state.completed = true;
+    expect(store.cleanupFinishedSaves()).toBe(true);
+    expect(store.saveSlots.length).toBe(0);
   });
 });

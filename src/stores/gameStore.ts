@@ -17,13 +17,32 @@ export type DiceServiceAdapter = Pick<
   | 'getSnapshot'
 >;
 
-const GAME_STATE_STORAGE_KEY = 'big-monte:engine-state';
-const GAME_STATE_STORAGE_VERSION = 1;
+export const MAX_SAVE_SLOTS = 4;
 
-type PersistedGamePayload = {
+const GAME_SAVES_STORAGE_KEY = 'big-monte:game-saves';
+const GAME_SAVES_STORAGE_VERSION = 1;
+
+const LEGACY_GAME_STATE_STORAGE_KEY = 'big-monte:engine-state';
+const LEGACY_GAME_STATE_STORAGE_VERSION = 1;
+
+type PersistedLegacyGamePayload = {
   version: number;
   savedAt: number;
   state: GameState;
+};
+
+export type GameSaveSlot = {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  state: GameState;
+};
+
+type PersistedGameSavesPayload = {
+  version: number;
+  savedAt: number;
+  activeId: string | null;
+  slots: GameSaveSlot[];
 };
 
 function getStorage(): Storage | null {
@@ -44,44 +63,139 @@ function getStorage(): Storage | null {
   }
 }
 
-function loadPersistedGameState(): GameState | null {
+function hasMeaningfulProgress(state: GameState) {
+  if (state.completed) return true;
+  if (state.rollsThisRound > 0) return true;
+  if (state.currentRound > 1) return true;
+  const scoredCount = Array.isArray(state.categories)
+    ? state.categories.filter((cat) => cat?.interactive !== false && cat?.scored === true).length
+    : 0;
+  return scoredCount > 0;
+}
+
+function generateSaveId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeSlots(rawSlots: unknown): GameSaveSlot[] {
+  if (!Array.isArray(rawSlots)) return [];
+  const slots: GameSaveSlot[] = [];
+  const seen = new Set<string>();
+  rawSlots.forEach((raw) => {
+    if (!raw || typeof raw !== 'object') return;
+    const slot = raw as Partial<GameSaveSlot>;
+    if (typeof slot.id !== 'string' || !slot.id.trim()) return;
+    if (!slot.state || typeof slot.state !== 'object') return;
+    if (seen.has(slot.id)) return;
+    const createdAt = typeof slot.createdAt === 'number' && Number.isFinite(slot.createdAt) ? slot.createdAt : Date.now();
+    const updatedAt = typeof slot.updatedAt === 'number' && Number.isFinite(slot.updatedAt) ? slot.updatedAt : createdAt;
+    slots.push({
+      id: slot.id,
+      createdAt,
+      updatedAt,
+      state: slot.state as GameState
+    });
+    seen.add(slot.id);
+  });
+
+  return slots
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, MAX_SAVE_SLOTS);
+}
+
+function loadLegacyGameState(): PersistedLegacyGamePayload | null {
   const storage = getStorage();
   if (!storage) return null;
   try {
-    const raw = storage.getItem(GAME_STATE_STORAGE_KEY);
+    const raw = storage.getItem(LEGACY_GAME_STATE_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedGamePayload;
-    if (!parsed || parsed.version !== GAME_STATE_STORAGE_VERSION || !parsed.state) {
+    const parsed = JSON.parse(raw) as PersistedLegacyGamePayload;
+    if (!parsed || parsed.version !== LEGACY_GAME_STATE_STORAGE_VERSION || !parsed.state) {
       return null;
     }
-    return parsed.state;
+    return parsed;
   } catch (err) {
     console.warn('[GameStore] failed to parse saved game state; ignoring snapshot.', err);
     return null;
   }
 }
 
-function persistGameState(state: GameState) {
+function persistGameSaves(slots: GameSaveSlot[], activeId: string | null) {
   const storage = getStorage();
   if (!storage) return;
-  const payload: PersistedGamePayload = {
-    version: GAME_STATE_STORAGE_VERSION,
+  if (!slots.length && !activeId) {
+    storage.removeItem(GAME_SAVES_STORAGE_KEY);
+    return;
+  }
+  const payload: PersistedGameSavesPayload = {
+    version: GAME_SAVES_STORAGE_VERSION,
     savedAt: Date.now(),
-    state
+    activeId,
+    slots
   };
   try {
-    storage.setItem(GAME_STATE_STORAGE_KEY, JSON.stringify(payload));
+    storage.setItem(GAME_SAVES_STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
     console.warn('[GameStore] failed to persist game snapshot', err);
   }
 }
 
-export const useGameStore = defineStore('game', () => {
-  const persistedState = loadPersistedGameState();
-  const engine = new GameEngine();
-  if (persistedState) {
+function loadPersistedGameSaves(): { slots: GameSaveSlot[]; activeId: string | null } {
+  const storage = getStorage();
+  if (!storage) return { slots: [], activeId: null };
+
+  const raw = storage.getItem(GAME_SAVES_STORAGE_KEY);
+  if (raw) {
     try {
-      engine.hydrateState(persistedState);
+      const parsed = JSON.parse(raw) as PersistedGameSavesPayload;
+      if (!parsed || parsed.version !== GAME_SAVES_STORAGE_VERSION) {
+        return { slots: [], activeId: null };
+      }
+      const slots = normalizeSlots(parsed.slots);
+      const candidateActive = typeof parsed.activeId === 'string' ? parsed.activeId : null;
+      const activeId = candidateActive && slots.some((slot) => slot.id === candidateActive) ? candidateActive : slots[0]?.id ?? null;
+      return { slots, activeId };
+    } catch (err) {
+      console.warn('[GameStore] failed to parse saved games; ignoring snapshot.', err);
+      return { slots: [], activeId: null };
+    }
+  }
+
+  const legacy = loadLegacyGameState();
+  if (!legacy || !hasMeaningfulProgress(legacy.state)) {
+    if (legacy) storage.removeItem(LEGACY_GAME_STATE_STORAGE_KEY);
+    return { slots: [], activeId: null };
+  }
+
+  const id = generateSaveId();
+  const createdAt = typeof legacy.savedAt === 'number' && Number.isFinite(legacy.savedAt) ? legacy.savedAt : Date.now();
+  const slot: GameSaveSlot = {
+    id,
+    createdAt,
+    updatedAt: createdAt,
+    state: legacy.state
+  };
+
+  storage.removeItem(LEGACY_GAME_STATE_STORAGE_KEY);
+  persistGameSaves([slot], id);
+  return { slots: [slot], activeId: id };
+}
+
+export const useGameStore = defineStore('game', () => {
+  const { slots: initialSlots, activeId: initialActiveId } = loadPersistedGameSaves();
+  const saveSlots = ref<GameSaveSlot[]>(initialSlots);
+  const activeSaveId = ref<string | null>(initialActiveId);
+
+  const engine = new GameEngine();
+  const activeSlot = activeSaveId.value
+    ? saveSlots.value.find((slot) => slot.id === activeSaveId.value)
+    : null;
+  if (activeSlot) {
+    try {
+      engine.hydrateState(activeSlot.state);
     } catch (err) {
       console.warn('[GameStore] failed to hydrate saved state; falling back to defaults.', err);
     }
@@ -116,17 +230,171 @@ export const useGameStore = defineStore('game', () => {
     diceSnapshot.value = next;
   }
 
+  function persistSavesSnapshot() {
+    persistGameSaves(saveSlots.value, activeSaveId.value);
+  }
+
+  function updateActiveSlotState(state: GameState) {
+    const activeId = activeSaveId.value;
+    if (!activeId) return;
+    const idx = saveSlots.value.findIndex((slot) => slot.id === activeId);
+    if (idx < 0) {
+      activeSaveId.value = null;
+      persistSavesSnapshot();
+      return;
+    }
+    const now = Date.now();
+    const nextSlots = [...saveSlots.value];
+    nextSlots[idx] = {
+      ...nextSlots[idx],
+      updatedAt: now,
+      state
+    };
+    nextSlots.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    saveSlots.value = nextSlots;
+    persistSavesSnapshot();
+  }
+
   watch(
     engineState,
     (state) => {
-      persistGameState(state);
+      updateActiveSlotState(state);
       syncDiceSnapshot();
     },
-    { deep: true, immediate: true }
+    { deep: true, immediate: true, flush: 'sync' }
   );
 
   function setEngineState() {
     engineState.value = engine.getState();
+  }
+
+  function hydrateDiceServiceFromState(state: GameState) {
+    diceService.value?.hydrateRoundState({
+      values: state.dice,
+      holds: state.holds,
+      rollsThisRound: state.rollsThisRound
+    });
+  }
+
+  function tryHydrateSlot(slot: GameSaveSlot) {
+    try {
+      engine.hydrateState(slot.state);
+      setEngineState();
+      hydrateDiceServiceFromState(engineState.value);
+      return true;
+    } catch (err) {
+      console.warn('[GameStore] failed to hydrate saved slot; removing it.', err);
+      return false;
+    }
+  }
+
+  function chooseMostRecentSlotId(slots: GameSaveSlot[]) {
+    if (!slots.length) return null;
+    return slots.reduce((best, slot) => (slot.updatedAt > best.updatedAt ? slot : best), slots[0]).id;
+  }
+
+  function createNewGameSlot() {
+    clearError();
+    if (saveSlots.value.length >= MAX_SAVE_SLOTS) {
+      return { ok: false as const, reason: 'limit' as const };
+    }
+
+    const now = Date.now();
+    const id = generateSaveId();
+    const state = engine.resetGame();
+    activeSaveId.value = id;
+    saveSlots.value = [
+      { id, createdAt: now, updatedAt: now, state },
+      ...saveSlots.value
+    ].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    persistSavesSnapshot();
+    engineState.value = state;
+    diceService.value?.startNewRound();
+    return { ok: true as const, id };
+  }
+
+  function loadGameSlot(id: string) {
+    clearError();
+    const slot = saveSlots.value.find((candidate) => candidate.id === id);
+    if (!slot) {
+      lastError.value = 'Saved game not found';
+      return false;
+    }
+    activeSaveId.value = id;
+    persistSavesSnapshot();
+    try {
+      engine.hydrateState(slot.state);
+      setEngineState();
+      hydrateDiceServiceFromState(engineState.value);
+    } catch (err) {
+      lastError.value = (err as Error).message;
+      return false;
+    }
+    return true;
+  }
+
+  function deleteGameSlot(id: string) {
+    clearError();
+    if (!saveSlots.value.some((slot) => slot.id === id)) return false;
+
+    let remaining = saveSlots.value.filter((slot) => slot.id !== id);
+    const removedWasActive = activeSaveId.value === id;
+    saveSlots.value = remaining;
+
+    if (removedWasActive) {
+      const ordered = [...remaining].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      let nextSlot: GameSaveSlot | undefined = ordered[0];
+      while (nextSlot) {
+        activeSaveId.value = nextSlot.id;
+        if (tryHydrateSlot(nextSlot)) break;
+        remaining = remaining.filter((slot) => slot.id !== nextSlot!.id);
+        saveSlots.value = remaining;
+        nextSlot = remaining.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+      }
+      if (!nextSlot) {
+        activeSaveId.value = null;
+        engine.resetGame();
+        setEngineState();
+        diceService.value?.startNewRound();
+      }
+    }
+
+    persistSavesSnapshot();
+    return true;
+  }
+
+  function quitActiveGame() {
+    const id = activeSaveId.value;
+    if (!id) return false;
+    return deleteGameSlot(id);
+  }
+
+  function cleanupFinishedSaves() {
+    let remaining = saveSlots.value.filter((slot) => slot.state?.completed !== true);
+    if (remaining.length === saveSlots.value.length) return false;
+
+    const ordered = [...remaining].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    let nextSlot: GameSaveSlot | undefined = activeSaveId.value
+      ? ordered.find((slot) => slot.id === activeSaveId.value)
+      : ordered[0];
+    while (nextSlot) {
+      activeSaveId.value = nextSlot.id;
+      if (tryHydrateSlot(nextSlot)) break;
+      remaining = remaining.filter((slot) => slot.id !== nextSlot!.id);
+      saveSlots.value = remaining;
+      nextSlot = remaining.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+    }
+
+    saveSlots.value = remaining;
+    if (!nextSlot) {
+      activeSaveId.value = null;
+      engine.resetGame();
+      setEngineState();
+      diceService.value?.startNewRound();
+    }
+
+    persistSavesSnapshot();
+    return true;
   }
 
   function setServiceError(message: string | null) {
@@ -316,6 +584,9 @@ export const useGameStore = defineStore('game', () => {
     // state
     engineState,
     diceSnapshot,
+    saveSlots,
+    activeSaveId,
+    maxSaveSlots: MAX_SAVE_SLOTS,
     serviceReady,
     serviceError,
     lastError,
@@ -330,6 +601,11 @@ export const useGameStore = defineStore('game', () => {
     handleServiceUpdate,
     setServiceError,
     // actions
+    createNewGameSlot,
+    loadGameSlot,
+    deleteGameSlot,
+    quitActiveGame,
+    cleanupFinishedSaves,
     rollAll,
     rerollUnheld,
     toggleHold,

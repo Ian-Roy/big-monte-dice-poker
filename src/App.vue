@@ -2,10 +2,12 @@
   <div id="app-root" :class="{ 'orientation-locked': orientationLocked }">
     <TitlePage
       v-if="currentPage === 'title'"
-      :can-resume="canResumeGame"
-      :summary="titleSummary"
+      :saves="savedGames"
+      :active-save-id="store.activeSaveId"
+      :max-saves="store.maxSaveSlots"
       @resume="handleResumeGame"
       @start="handleStartGame"
+      @delete="handleDeleteSavedGame"
       @settings="navigateTo('settings')"
     />
     <SettingsPage
@@ -22,13 +24,15 @@
         :active-layer="activeLayer"
         :dice-layer-mode="diceVisibility"
         @select="handleSelect"
+        @back-to-title="handleBackToTitle"
+        @quit-game="handleQuitGameRequest"
       />
       <DiceServiceBridge />
       <ConfirmDialog
-        v-if="pendingCategory"
+        v-if="confirmDialog"
         :title="dialogTitle"
         :message="dialogMessage"
-        @confirm="confirmScore"
+        @confirm="confirmDialogConfirm"
         @cancel="clearDialog"
       />
       <ToastStack :toasts="toasts" />
@@ -60,6 +64,7 @@ import { useGameStore } from './stores/gameStore';
 
 // Initialize the store now so upcoming Vue components can subscribe to state.
 const store = useGameStore();
+store.cleanupFinishedSaves();
 
 const { orientationLocked } = useOrientationLock({ maxMobileWidth: 900 });
 const currentPage = ref<'title' | 'settings' | 'game'>('title');
@@ -70,74 +75,88 @@ const diceVisibility = computed<'visible' | 'hidden'>(() => {
 });
 const bodyScrollLocked = computed(() => currentPage.value === 'game' && !orientationLocked.value);
 
-const pendingCategory = ref<CategoryKey | null>(null);
+type ConfirmDialogState =
+  | { type: 'score'; category: CategoryKey }
+  | { type: 'quit' }
+  | null;
+
+const confirmDialog = ref<ConfirmDialogState>(null);
 const { toasts, pushToast } = useToasts({ max: 3, durationMs: 1800 });
 
 const dialogTitle = computed(() => {
-  if (!pendingCategory.value) return '';
-  const cat = store.categories.find((c) => c.key === pendingCategory.value);
+  const dialog = confirmDialog.value;
+  if (!dialog) return '';
+  if (dialog.type === 'quit') return 'Quit game?';
+  const cat = store.categories.find((c) => c.key === dialog.category);
   return cat ? `Score ${cat.label}?` : 'Score this category?';
 });
 
 const dialogMessage = computed(() => {
-  if (!pendingCategory.value) return '';
-  const cat = store.categories.find((c) => c.key === pendingCategory.value);
+  const dialog = confirmDialog.value;
+  if (!dialog) return '';
+  if (dialog.type === 'quit') {
+    return 'This will discard your current progress and remove this save slot. This cannot be undone.';
+  }
+  const cat = store.categories.find((c) => c.key === dialog.category);
   if (!cat) return '';
   const preview =
-    store.engineState.dice.every((v) => typeof v === 'number')
-      ? store.previewCategory(cat.key)
-      : null;
+    store.engineState.dice.every((v) => typeof v === 'number') ? store.previewCategory(cat.key) : null;
   const scoreText = typeof preview === 'number' ? preview : '0';
   return `This will add ${scoreText} point${scoreText === '1' ? '' : 's'} and end this round.`;
 });
 
-const scorableCategories = computed(() =>
-  store.engineState.categories.filter((cat) => cat.interactive !== false)
+const savedGames = computed(() =>
+  store.saveSlots.map((slot) => {
+    const state = slot.state;
+    const scorable = Array.isArray(state.categories)
+      ? state.categories.filter((cat) => cat.interactive !== false)
+      : [];
+    const scoredCount = scorable.filter((cat) => cat.scored).length;
+    return {
+      id: slot.id,
+      round: state.currentRound ?? 1,
+      maxRounds: state.maxRounds ?? 0,
+      scoredCount,
+      totalScorable: scorable.length,
+      score: state.totals?.grand ?? 0
+    };
+  })
 );
-const scoredCategoryCount = computed(() =>
-  scorableCategories.value.filter((cat) => cat.scored).length
-);
-const canResumeGame = computed(() => {
-  const state = store.engineState;
-  return (
-    state.completed ||
-    scoredCategoryCount.value > 0 ||
-    state.rollsThisRound > 0 ||
-    state.currentRound > 1
-  );
-});
-const titleSummary = computed(() => ({
-  round: store.engineState.currentRound,
-  maxRounds: store.engineState.maxRounds,
-  scoredCount: scoredCategoryCount.value,
-  totalScorable: scorableCategories.value.length,
-  score: store.totals.grand ?? 0
-}));
 
 function navigateTo(page: typeof currentPage.value) {
+  if (page === 'title') {
+    store.cleanupFinishedSaves();
+  }
   currentPage.value = page;
 }
 
 function handleSelect(key: CategoryKey) {
-  pendingCategory.value = key;
+  confirmDialog.value = { type: 'score', category: key };
 }
 
 function clearDialog() {
-  pendingCategory.value = null;
+  confirmDialog.value = null;
 }
 
-function confirmScore() {
-  if (!pendingCategory.value) return;
-  const key = pendingCategory.value;
-  try {
-    store.scoreCategory(key);
-    const cat = store.categories.find((c) => c.key === key);
-    pushToast(cat ? `${cat.label} scored` : 'Scored');
-  } catch (err) {
-    pushToast((err as Error).message);
-  } finally {
-    pendingCategory.value = null;
+function confirmDialogConfirm() {
+  const dialog = confirmDialog.value;
+  if (!dialog) return;
+  if (dialog.type === 'quit') {
+    const ok = store.quitActiveGame();
+    if (ok) pushToast('Game quit');
+    confirmDialog.value = null;
+    navigateTo('title');
+    return;
   }
+
+  store.scoreCategory(dialog.category);
+  if (store.lastError) {
+    confirmDialog.value = null;
+    return;
+  }
+  const cat = store.categories.find((c) => c.key === dialog.category);
+  pushToast(cat ? `${cat.label} scored` : 'Scored');
+  confirmDialog.value = null;
 }
 
 function setActiveLayer(layer: ActiveLayer) {
@@ -148,15 +167,38 @@ function showDice() {
   setActiveLayer('dice');
 }
 
-function handleResumeGame() {
+function handleResumeGame(id: string) {
+  const ok = store.loadGameSlot(id);
+  if (!ok) {
+    pushToast('Could not load that saved game.');
+    return;
+  }
   currentPage.value = 'game';
   setActiveLayer(store.engineState.completed ? 'summary' : 'dice');
 }
 
 function handleStartGame() {
-  store.resetGame();
+  store.cleanupFinishedSaves();
+  const result = store.createNewGameSlot();
+  if (!result.ok) {
+    pushToast('You already have 4 saved games. Delete or finish one to start a new game.');
+    return;
+  }
   setActiveLayer('dice');
   currentPage.value = 'game';
+}
+
+function handleDeleteSavedGame(id: string) {
+  store.deleteGameSlot(id);
+}
+
+function handleBackToTitle() {
+  navigateTo('title');
+}
+
+function handleQuitGameRequest() {
+  if (store.engineState.completed) return;
+  confirmDialog.value = { type: 'quit' };
 }
 
 onBeforeUnmount(() => {

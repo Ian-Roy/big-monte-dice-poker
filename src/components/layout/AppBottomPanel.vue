@@ -4,7 +4,11 @@
     <main v-if="activeLayer !== 'dice'" class="layout">
       <section class="pane score-card">
         <ScoreTable v-if="activeLayer === 'score'" @select="emit('select', $event)" />
-        <EndGameSummary v-else />
+        <EndGameSummary
+          v-else
+          @back-to-title="emit('back-to-title')"
+          @quit-game="emit('quit-game')"
+        />
       </section>
     </main>
   </div>
@@ -24,6 +28,8 @@ defineProps<{
 
 const emit = defineEmits<{
   (event: 'select', key: CategoryKey): void;
+  (event: 'back-to-title'): void;
+  (event: 'quit-game'): void;
 }>();
 </script>
 

@@ -14,7 +14,12 @@
     </header>
 
     <div class="summary-actions">
-      <button type="button" class="ghost-button" @click="restartGame">Start new game</button>
+      <button type="button" class="ghost-button" @click="$emit('back-to-title')">
+        Go back to title screen
+      </button>
+      <button v-if="!completed" type="button" class="danger-button" @click="$emit('quit-game')">
+        Quit game
+      </button>
     </div>
     <section class="final-score">
       <header>
@@ -82,6 +87,11 @@ const maxRounds = computed(() => store.engineState.maxRounds);
 const completed = computed(() => store.engineState.completed);
 const statusLabel = computed(() => (completed.value ? 'Game complete' : 'Game in progress'));
 
+defineEmits<{
+  (event: 'back-to-title'): void;
+  (event: 'quit-game'): void;
+}>();
+
 const auditEntries = computed(() => {
   const entries = store.categories
     .filter((cat) => cat.scored && cat.scoredDice && cat.scoredDice.length)
@@ -99,12 +109,6 @@ const auditEntries = computed(() => {
     return aRound - bRound;
   });
 });
-
-function restartGame() {
-  if (typeof window !== 'undefined') {
-    window.location.reload();
-  }
-}
 </script>
 
 <style scoped>
@@ -159,6 +163,26 @@ function restartGame() {
 .ghost-button:focus-visible {
   border-color: rgba(146, 227, 255, 0.8);
   background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.danger-button {
+  border-radius: 999px;
+  padding: 6px 16px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: rgba(255, 220, 220, 0.92);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.danger-button:hover,
+.danger-button:focus-visible {
+  border-color: rgba(248, 113, 113, 0.95);
+  background: rgba(239, 68, 68, 0.28);
   color: #fff;
 }
 
