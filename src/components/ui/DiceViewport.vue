@@ -2,7 +2,6 @@
   <div
     class="dice-viewport"
     :class="{ 'dice-viewport--hidden': layerMode === 'hidden' }"
-    :style="layerStyle"
     :inert="layerMode === 'hidden'"
   >
     <div id="dice-box"></div>
@@ -10,42 +9,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-
-type Bounds = {
-  width: number;
-  height: number;
-  left: number;
-  top: number;
-};
-
-const props = defineProps<{
-  bounds: Bounds | null;
+defineProps<{
   layerMode: 'visible' | 'hidden';
 }>();
-
-const layerStyle = computed(() => {
-  const b = props.bounds;
-  if (!b || !b.width || !b.height) {
-    return {
-      width: '100vw',
-      height: '100vh',
-      left: '0px',
-      top: '0px'
-    };
-  }
-  return {
-    width: `${b.width}px`,
-    height: `${b.height}px`,
-    left: `${b.left}px`,
-    top: `${b.top}px`
-  };
-});
 </script>
 
 <style scoped>
 .dice-viewport {
-  position: fixed;
+  position: absolute;
+  inset: 0;
   pointer-events: auto;
   overflow: hidden;
   z-index: 18;

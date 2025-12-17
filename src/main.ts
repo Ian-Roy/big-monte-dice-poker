@@ -5,6 +5,9 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { setupInstallPrompt } from './pwa/InstallPrompt';
 import { setupPWAUpdatePrompt } from './pwa/ServiceWorkerManager';
+import { setupViewportSizing } from './shared/viewport';
+
+setupViewportSizing();
 
 const app = createApp(App);
 app.use(createPinia());

@@ -1,14 +1,16 @@
 <template>
   <div class="toast-stack">
-    <div v-for="(toast, idx) in toasts" :key="idx" class="toast">
-      {{ toast }}
+    <div v-for="toast in toasts" :key="toast.id" class="toast">
+      {{ toast.text }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { Toast } from '../../composables/useToasts';
+
 defineProps<{
-  toasts: string[];
+  toasts: Toast[];
 }>();
 </script>
 

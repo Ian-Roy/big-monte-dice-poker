@@ -4,6 +4,8 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -15,7 +17,6 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 6px;
   overscroll-behavior: contain;
 }
 
@@ -25,6 +26,7 @@ body.dice-layer-locked {
 
 #app {
   width: 100%;
+  min-width: 0;
 }
 
 /* Vue layout handles sizing; #game-root container removed */

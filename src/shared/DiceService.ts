@@ -27,6 +27,23 @@ const DIE_COUNT = 5;
 
 type NormalizedDie = Pick<GameDie, 'value' | 'sides' | 'groupId' | 'rollId'>;
 
+const DEV_LOGS = import.meta.env.DEV;
+
+function devInfo(...args: any[]) {
+  if (!DEV_LOGS) return;
+  console.info(...args);
+}
+
+function devDebug(...args: any[]) {
+  if (!DEV_LOGS) return;
+  console.debug(...args);
+}
+
+function devWarn(...args: any[]) {
+  if (!DEV_LOGS) return;
+  console.warn(...args);
+}
+
 export function mergeRollResults({
   previous,
   results,
@@ -38,7 +55,7 @@ export function mergeRollResults({
 }) {
   const next = previous.map((die) => ({ ...die }));
   const rerollQueue = [...rerollIndices];
-   const rerollIndexSet = new Set(rerollIndices);
+  const rerollIndexSet = new Set(rerollIndices);
   const usedIndices = new Set<number>();
   const idToIndex = new Map<string, number>();
 
@@ -69,7 +86,7 @@ export function mergeRollResults({
       const updatingHeld = prevDie?.held && !rerollIndexSet.has(matchIdx);
       if (updatingHeld) {
         // Defensive guard: ignore stray results for held dice we did not ask to reroll.
-        console.warn('[DiceService] mergeRollResults: ignoring result for held die', {
+        devWarn('[DiceService] mergeRollResults: ignoring result for held die', {
           index: matchIdx,
           rollId: prevDie.rollId,
           groupId: prevDie.groupId
@@ -133,11 +150,11 @@ export class DiceService {
   private lastCanvasSize: { width: number; height: number } | null = null;
   private contextLostNotified = false;
 
-  constructor(containerSelector = '#dice-box') {
+ constructor(containerSelector = '#dice-box') {
     this.containerSelector = containerSelector;
     const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
     const assetPath = `${base}assets/dice-box/`;
-    console.info('[DiceService] configuring DiceBox', { assetPath, containerSelector });
+    devInfo('[DiceService] configuring DiceBox', { assetPath, containerSelector });
 
     this.diceBox = new DiceBox({
       assetPath,
@@ -155,7 +172,7 @@ export class DiceService {
   }
 
   async init() {
-    console.info('[DiceService] init start');
+    devInfo('[DiceService] init start');
     await this.diceBox.init();
     if (typeof document !== 'undefined') {
       this.containerEl = document.querySelector(this.containerSelector) as HTMLElement | null;
@@ -188,7 +205,7 @@ export class DiceService {
         });
       }
     }
-    console.info('[DiceService] init complete');
+    devInfo('[DiceService] init complete');
     this.logViewportMetrics('init');
     this.emitChange();
   }
@@ -240,7 +257,7 @@ export class DiceService {
     this.rolling = false;
     this.dice = buildEmptyDice();
     this.pendingRerollIndices = [];
-    console.info('[DiceService] startNewRound -> reset state');
+    devInfo('[DiceService] startNewRound -> reset state');
     if (currentIds.length && this.diceBox?.setHeldState) {
       this.applyHeldVisuals(currentIds, false);
     }
@@ -255,7 +272,7 @@ export class DiceService {
     this.rolling = true;
     this.pendingRerollIndices = [];
     this.emitChange();
-    console.info(`[DiceService] rollAll -> roll ${DIE_COUNT}d6`, {
+    devInfo(`[DiceService] rollAll -> roll ${DIE_COUNT}d6`, {
       rollsThisRound: this.rollsThisRound,
       diceCount: DIE_COUNT
     });
@@ -298,7 +315,7 @@ export class DiceService {
       this.emitChange();
       return;
     }
-    console.info('[DiceService] rerollUnheld -> reroll subset', {
+    devInfo('[DiceService] rerollUnheld -> reroll subset', {
       rollsThisRound: this.rollsThisRound,
       toReroll: targets
     });
@@ -326,7 +343,7 @@ export class DiceService {
       return;
     }
     die.held = !die.held;
-    console.debug('[DiceService] toggleHold', { index, held: die.held, value: die.value });
+    devDebug('[DiceService] toggleHold', { index, held: die.held, value: die.value });
     this.syncHeldVisuals();
     this.emitChange();
   }
@@ -348,7 +365,7 @@ export class DiceService {
   }
 
   private handleRollComplete(rollResult: any) {
-    console.info('[DiceService] onRollComplete payload', rollResult);
+    devInfo('[DiceService] onRollComplete payload', rollResult);
     const groups = Array.isArray(rollResult) ? rollResult : [rollResult];
     const primaryGroup = groups[0] || {};
     const rawDice = Array.isArray(primaryGroup.rolls)
@@ -377,7 +394,7 @@ export class DiceService {
     const isFirstRoll = this.rollsThisRound === 1 || this.dice.length === 0;
 
     if (isFirstRoll) {
-      console.debug('[DiceService] roll complete (first roll)', {
+      devDebug('[DiceService] roll complete (first roll)', {
         diceCount: rawMapped.length
       });
       this.dice = rawMapped.map((die, index) => ({
@@ -389,7 +406,7 @@ export class DiceService {
         rollId: die.rollId
       }));
     } else {
-      console.debug('[DiceService] roll complete (reroll)', {
+      devDebug('[DiceService] roll complete (reroll)', {
         resultsCount: rawMapped.length,
         pendingRerollIndices: this.pendingRerollIndices
       });
@@ -402,7 +419,7 @@ export class DiceService {
 
     this.pendingRerollIndices = [];
     this.rolling = false;
-    console.debug('[DiceService] roll complete -> snapshot', this.getSnapshot());
+    devDebug('[DiceService] roll complete -> snapshot', this.getSnapshot());
     this.logViewportMetrics('roll-complete');
     this.syncHeldVisuals();
     this.emitChange();
@@ -417,12 +434,17 @@ export class DiceService {
     const pointerY = Math.round(event.clientY);
     const strict = !!options?.strictBounds;
     const log = (level: 'debug' | 'warn', reason: string, data: Record<string, unknown> = {}) => {
+      if (!DEV_LOGS) return;
       const payload = {
         strict,
         pointer: `${pointerX},${pointerY}`,
         ...data
       };
-      console[level](`[DiceService] pickFromPointer ${reason}`, payload);
+      if (level === 'debug') {
+        devDebug(`[DiceService] pickFromPointer ${reason}`, payload);
+      } else {
+        devWarn(`[DiceService] pickFromPointer ${reason}`, payload);
+      }
     };
 
     if (viewport) {
@@ -523,7 +545,7 @@ export class DiceService {
       console.warn('[DiceService] handlePickedDie -> rollId not found', { rollId: hit.rollId });
       return;
     }
-    console.debug('[DiceService] handlePickedDie -> toggleHold', { rollId: hit.rollId, index: idx });
+    devDebug('[DiceService] handlePickedDie -> toggleHold', { rollId: hit.rollId, index: idx });
     this.toggleHold(idx);
   }
 
@@ -625,6 +647,7 @@ export class DiceService {
   }
 
   private logViewportMetrics(tag: string) {
+    if (!DEV_LOGS) return;
     if (typeof document === 'undefined') return;
     const container = document.querySelector(this.containerSelector) as HTMLElement | null;
     const canvas = container?.querySelector('canvas') as HTMLCanvasElement | null;
@@ -674,7 +697,7 @@ export class DiceService {
         : null
     };
 
-    console.info(`[DiceService] viewport metrics (${tag})`, metrics);
+    devInfo(`[DiceService] viewport metrics (${tag})`, metrics);
 
     const summaryParts = [
       metrics.layerRect
@@ -692,7 +715,7 @@ export class DiceService {
         : null
     ].filter(Boolean);
     if (summaryParts.length) {
-      console.info(`[DiceService] viewport summary (${tag})`, summaryParts.join(' | '));
+      devInfo(`[DiceService] viewport summary (${tag})`, summaryParts.join(' | '));
     }
   }
 }

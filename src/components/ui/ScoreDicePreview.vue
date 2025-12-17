@@ -36,10 +36,6 @@ const canvasOverlayText = computed(() => {
   return "";
 });
 
-const diffuseUrl = new URL(
-  "../../assets/dice-box/diffuse-light.png",
-  import.meta.url
-).href;
 const DIE_SIZE = 40;
 const DIE_SPACING = 8;
 const DIE_PADDING = 10;
@@ -57,9 +53,6 @@ const DICE_PREVIEW_COLORS = {
     text: "#dfffe7"
   }
 };
-
-const textureImage = new Image();
-textureImage.src = diffuseUrl;
 
 function drawDice() {
   if (typeof window === "undefined") return;
@@ -101,27 +94,8 @@ function drawDice() {
       ctx.strokeStyle
     );
 
-    if (textureImage.complete && textureImage.naturalWidth > 0) {
-      let pattern: CanvasPattern | null = null;
-      try {
-        pattern = ctx.createPattern(textureImage, "repeat");
-      } catch (e) {
-        pattern = null;
-      }
-      if (pattern) {
-        ctx.save();
-        ctx.translate(x + 2, baseY + 2);
-        ctx.fillStyle = pattern;
-        ctx.fillRect(0, 0, DIE_SIZE - 4, DIE_SIZE - 4);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = palette.fill;
-        ctx.fillRect(x + 2, baseY + 2, DIE_SIZE - 4, DIE_SIZE - 4);
-      }
-    } else {
-      ctx.fillStyle = palette.fill;
-      ctx.fillRect(x + 2, baseY + 2, DIE_SIZE - 4, DIE_SIZE - 4);
-    }
+    ctx.fillStyle = palette.fill;
+    ctx.fillRect(x + 2, baseY + 2, DIE_SIZE - 4, DIE_SIZE - 4);
 
     ctx.fillStyle = palette.text;
     ctx.font = '600 20px "JetBrains Mono", "DM Mono", "Fira Code", monospace';
@@ -209,8 +183,6 @@ function handleScoreDicePointerDown(event: PointerEvent) {
 }
 
 onMounted(() => {
-  textureImage.onload = () => scheduleDraw();
-  textureImage.onerror = () => scheduleDraw();
   scheduleDraw();
   window.addEventListener("resize", scheduleDraw);
 });

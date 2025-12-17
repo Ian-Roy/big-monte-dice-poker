@@ -44,12 +44,20 @@ Local-only helpers:
 - When a new version is available, a toast appears with “Reload”.
 - Everything is self-hosted; no external CDNs.
 
+## Docs
+
+- `docs/ui-overview.md` – UI mental model + layout/responsiveness notes (start here).
+- `docs/working-with-dice-box.md` – Debugging and working with the 3D dice integration.
+- `docs/dice-box-fork.md` – Notes about the local Dice Box fork.
+
 ## File map
 
-- `src/scenes/` – Boot → Preload → Main scene flow.
-- `src/shared/` – Input, Settings, Storage, etc.
-- `tools/gen-assets.ts` – Procedurally generates icons, a tiny sprite, and a click sfx.
-- `assets/manifest.json` – Declarative list of assets to load at startup.
+- `src/components/` – Vue UI components + DiceService bridge.
+- `src/game/` – Game engine logic and scoring rules.
+- `src/stores/` – Pinia store (state + persistence).
+- `src/shared/` – Dice service and shared utilities.
+- `src/pwa/` – PWA install/update prompts.
+- `tools/` – Asset generation scripts.
 
 ## License
 
