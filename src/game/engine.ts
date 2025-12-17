@@ -179,6 +179,59 @@ export class GameEngine {
     return this.getState();
   }
 
+  hydrateState(snapshot?: GameState | null) {
+    if (!snapshot) return this.getState();
+    const template = this.createInitialState();
+    const dice = normalizeSavedDice(snapshot.dice, this.config.diceCount);
+    const holds = normalizeSavedHolds(snapshot.holds, this.config.diceCount);
+    const rollsThisRound = clampNumber(
+      snapshot.rollsThisRound,
+      0,
+      this.config.maxRolls,
+      template.rollsThisRound
+    );
+    const currentRound = clampNumber(
+      snapshot.currentRound,
+      1,
+      this.config.maxRounds,
+      template.currentRound
+    );
+    const savedCategories = new Map<CategoryKey, ScoreCategoryState>(
+      Array.isArray(snapshot.categories) ? snapshot.categories.map((cat) => [cat.key, cat]) : []
+    );
+    const categories = template.categories.map((cat) => {
+      const saved = savedCategories.get(cat.key);
+      if (!saved) return cat;
+      const score = typeof saved.score === 'number' && Number.isFinite(saved.score) ? saved.score : null;
+      const scored = saved.scored === true;
+      const scoredDice =
+        scored && Array.isArray(saved.scoredDice)
+          ? normalizeScoredDice(saved.scoredDice, this.config.diceCount)
+          : null;
+      const roundScored = scored ? clampNumberOrNull(saved.roundScored, 1, this.config.maxRounds) : null;
+      return {
+        ...cat,
+        score,
+        scored,
+        scoredDice,
+        roundScored
+      };
+    });
+
+    this.state = {
+      ...template,
+      dice,
+      holds,
+      rollsThisRound,
+      currentRound,
+      categories
+    };
+
+    this.updateUpperBonus();
+    this.recomputeTotals();
+    return this.getState();
+  }
+
   private findCategory(key: CategoryKey) {
     return this.state.categories.find((c) => c.key === key);
   }
@@ -463,6 +516,39 @@ export function buildScoreCategories(): ScoreCategoryState[] {
       roundScored: null
     }
   ];
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function clampNumberOrNull(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function normalizeSavedDice(values: unknown, diceCount: number): DiceValue[] {
+  if (!Array.isArray(values)) {
+    return Array.from({ length: diceCount }, () => null);
+  }
+  return Array.from({ length: diceCount }, (_, idx) => normalizeDieValue(values[idx]));
+}
+
+function normalizeSavedHolds(values: unknown, diceCount: number): boolean[] {
+  if (!Array.isArray(values)) {
+    return Array.from({ length: diceCount }, () => false);
+  }
+  return Array.from({ length: diceCount }, (_, idx) => !!values[idx]);
+}
+
+function normalizeScoredDice(values: unknown, diceCount: number): number[] | null {
+  if (!Array.isArray(values)) return null;
+  const normalized = values
+    .slice(0, diceCount)
+    .map((value) => normalizeDieValue(value))
+    .filter((value): value is number => typeof value === 'number');
+  return normalized.length ? normalized : null;
 }
 
 function normalizeDieValue(value: unknown): number | null {

@@ -55,6 +55,13 @@
       @cancel="clearDialog"
     />
     <ToastStack :toasts="toasts" />
+    <TitleScreen
+      v-if="showTitleScreen"
+      :can-resume="canResumeGame"
+      :summary="titleSummary"
+      @resume="handleResumeGame"
+      @start="handleStartGame"
+    />
     <div v-if="orientationLocked" class="orientation-overlay">
       <div class="orientation-overlay__card">
         <h3>Rotate your device</h3>
@@ -76,6 +83,7 @@ import ConfirmDialog from './components/ui/ConfirmDialog.vue';
 import ToastStack from './components/ui/ToastStack.vue';
 import ScoreDicePreview from './components/ui/ScoreDicePreview.vue';
 import EndGameSummary from './components/ui/EndGameSummary.vue';
+import TitleScreen from './components/ui/TitleScreen.vue';
 import type { CategoryKey } from './game/engine';
 import { useGameStore } from './stores/gameStore';
 
@@ -113,6 +121,7 @@ const handleWindowResize = () => {
 
 const pendingCategory = ref<CategoryKey | null>(null);
 const toasts = ref<string[]>([]);
+const showTitleScreen = ref(true);
 let resizeObserver: ResizeObserver | null = null;
 let orientationMedia: MediaQueryList | null = null;
 let orientationCleanup: (() => void) | null = null;
@@ -134,6 +143,29 @@ const dialogMessage = computed(() => {
   const scoreText = typeof preview === 'number' ? preview : '0';
   return `This will add ${scoreText} point${scoreText === '1' ? '' : 's'} and end this round.`;
 });
+
+const scorableCategories = computed(() =>
+  store.engineState.categories.filter((cat) => cat.interactive !== false)
+);
+const scoredCategoryCount = computed(() =>
+  scorableCategories.value.filter((cat) => cat.scored).length
+);
+const canResumeGame = computed(() => {
+  const state = store.engineState;
+  return (
+    state.completed ||
+    scoredCategoryCount.value > 0 ||
+    state.rollsThisRound > 0 ||
+    state.currentRound > 1
+  );
+});
+const titleSummary = computed(() => ({
+  round: store.engineState.currentRound,
+  maxRounds: store.engineState.maxRounds,
+  scoredCount: scoredCategoryCount.value,
+  totalScorable: scorableCategories.value.length,
+  score: store.totals.grand ?? 0
+}));
 
 function pushToast(text: string) {
   toasts.value = [...toasts.value.slice(-2), text];
@@ -177,6 +209,21 @@ function setActiveLayer(layer: ActiveLayer) {
 
 function showDice() {
   setActiveLayer('dice');
+}
+
+function hideTitleScreen() {
+  showTitleScreen.value = false;
+  nextTick(() => updateDiceLayerBounds());
+}
+
+function handleResumeGame() {
+  hideTitleScreen();
+}
+
+function handleStartGame() {
+  store.resetGame();
+  setActiveLayer('dice');
+  hideTitleScreen();
 }
 
 function updateDiceLayerBounds(triggeredByResize = false) {

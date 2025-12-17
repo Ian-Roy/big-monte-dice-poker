@@ -1,7 +1,7 @@
-import { computed, ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 
-import { GameEngine, type CategoryKey } from '../game/engine';
+import { GameEngine, type CategoryKey, type GameState } from '../game/engine';
 import { emptySnapshot, snapshotFromService, type DiceSnapshot } from '../shared/DiceState';
 import type { DiceService, DiceServiceSnapshot } from '../shared/DiceService';
 
@@ -10,8 +10,75 @@ export type DiceServiceAdapter = Pick<
   'rollAll' | 'rerollUnheld' | 'toggleHold' | 'startNewRound' | 'onChange' | 'getSnapshot'
 >;
 
+const GAME_STATE_STORAGE_KEY = 'big-monte:engine-state';
+const GAME_STATE_STORAGE_VERSION = 1;
+
+type PersistedGamePayload = {
+  version: number;
+  savedAt: number;
+  state: GameState;
+};
+
+function getStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const storage = window.localStorage;
+    if (
+      !storage ||
+      typeof storage.getItem !== 'function' ||
+      typeof storage.setItem !== 'function' ||
+      typeof storage.removeItem !== 'function'
+    ) {
+      return null;
+    }
+    return storage;
+  } catch {
+    return null;
+  }
+}
+
+function loadPersistedGameState(): GameState | null {
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(GAME_STATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedGamePayload;
+    if (!parsed || parsed.version !== GAME_STATE_STORAGE_VERSION || !parsed.state) {
+      return null;
+    }
+    return parsed.state;
+  } catch (err) {
+    console.warn('[GameStore] failed to parse saved game state; ignoring snapshot.', err);
+    return null;
+  }
+}
+
+function persistGameState(state: GameState) {
+  const storage = getStorage();
+  if (!storage) return;
+  const payload: PersistedGamePayload = {
+    version: GAME_STATE_STORAGE_VERSION,
+    savedAt: Date.now(),
+    state
+  };
+  try {
+    storage.setItem(GAME_STATE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('[GameStore] failed to persist game snapshot', err);
+  }
+}
+
 export const useGameStore = defineStore('game', () => {
+  const persistedState = loadPersistedGameState();
   const engine = new GameEngine();
+  if (persistedState) {
+    try {
+      engine.hydrateState(persistedState);
+    } catch (err) {
+      console.warn('[GameStore] failed to hydrate saved state; falling back to defaults.', err);
+    }
+  }
   const engineState = ref(engine.getState());
   const diceSnapshot = ref<DiceSnapshot>(emptySnapshot());
   const serviceReady = ref(false);
@@ -26,6 +93,14 @@ export const useGameStore = defineStore('game', () => {
   const isRolling = computed(() => diceSnapshot.value.isRolling);
   const rollsThisRound = computed(() => diceSnapshot.value.rollsThisRound);
   const rollLimit = computed(() => engineState.value.maxRolls);
+
+  watch(
+    engineState,
+    (state) => {
+      persistGameState(state);
+    },
+    { deep: true, immediate: true }
+  );
 
   function setEngineState() {
     engineState.value = engine.getState();
@@ -171,6 +246,13 @@ export const useGameStore = defineStore('game', () => {
     diceService.value?.startNewRound();
   }
 
+  function resetGame() {
+    clearError();
+    engine.resetGame();
+    setEngineState();
+    diceService.value?.startNewRound();
+  }
+
   return {
     // state
     engineState,
@@ -194,6 +276,7 @@ export const useGameStore = defineStore('game', () => {
     toggleHold,
     scoreCategory,
     startNewRound,
+    resetGame,
     previewCategory: (key: CategoryKey) => engine.previewCategory(key)
   };
 });
