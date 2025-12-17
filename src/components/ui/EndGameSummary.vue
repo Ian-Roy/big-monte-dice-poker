@@ -59,8 +59,7 @@
               :key="`${entry.key}-${dieIdx}-${value}`"
               class="audit-die"
             >
-              <span v-if="faceStyle(value)" class="die-face" :style="faceStyle(value)" />
-              <span v-else class="die-value">{{ value }}</span>
+              <span class="die-value">{{ typeof value === 'number' ? value : '?' }}</span>
             </span>
           </div>
         </article>
@@ -73,11 +72,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import { useDiceSprites } from '../../composables/useDiceSprites';
 import { useGameStore } from '../../stores/gameStore';
 
 const store = useGameStore();
-const sprites = useDiceSprites();
 
 const totals = computed(() => store.totals);
 const currentRound = computed(() => store.engineState.currentRound);
@@ -102,24 +99,6 @@ const auditEntries = computed(() => {
     return aRound - bRound;
   });
 });
-
-const SPRITE_SCALE = 0.36;
-
-function faceStyle(value: number | null) {
-  if (typeof value !== 'number') return null;
-  const frame = sprites.frames[value];
-  if (!frame) return null;
-  const scale = SPRITE_SCALE;
-  const bgSize = `${sprites.sheetSize.w * scale}px ${sprites.sheetSize.h * scale}px`;
-  return {
-    width: `${frame.w * scale}px`,
-    height: `${frame.h * scale}px`,
-    backgroundImage: `url(${sprites.url})`,
-    backgroundSize: bgSize,
-    backgroundPosition: `-${frame.x * scale}px -${frame.y * scale}px`,
-    backgroundRepeat: 'no-repeat'
-  };
-}
 
 function restartGame() {
   if (typeof window !== 'undefined') {
@@ -326,24 +305,20 @@ function restartGame() {
 }
 
 .audit-die {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   display: grid;
   place-items: center;
 }
 
-.die-face {
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-}
-
 .die-value {
-  font-size: 16px;
-  font-weight: 700;
+  font-family: 'JetBrains Mono', 'DM Mono', 'Fira Code', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  font-weight: 600;
   color: rgba(255, 255, 255, 0.8);
 }
 
