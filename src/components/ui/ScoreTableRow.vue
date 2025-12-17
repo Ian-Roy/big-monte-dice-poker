@@ -13,6 +13,9 @@
         <template v-if="category.scored">
           {{ category.score ?? 0 }}
         </template>
+        <template v-else-if="category.interactive === false">
+          —
+        </template>
         <template v-else-if="preview !== null">
           +{{ preview }}
         </template>
