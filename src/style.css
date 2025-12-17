@@ -8,6 +8,12 @@ body {
   overflow-x: hidden;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   background: radial-gradient(circle at 20% 20%, rgba(17, 98, 122, 0.16), transparent 35%),
     radial-gradient(circle at 70% 10%, rgba(255, 255, 255, 0.06), transparent 32%),
@@ -32,6 +38,7 @@ body.dice-layer-locked {
 /* Vue layout handles sizing; #game-root container removed */
 
 canvas {
+  box-sizing: content-box;
   touch-action: none;
 }
 

@@ -47,6 +47,7 @@ const emit = defineEmits<{
 
 .layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   width: 100%;
   flex: 1;
@@ -63,6 +64,7 @@ const emit = defineEmits<{
   border-radius: 16px;
   padding: 10px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  min-width: 0;
   position: relative;
   z-index: 6;
 }
