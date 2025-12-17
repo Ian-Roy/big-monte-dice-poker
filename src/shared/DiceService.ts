@@ -165,6 +165,7 @@ export class DiceService {
   private windowPointerListener: ((ev: PointerEvent) => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private heldVisualsWarned = false;
+  private liveDiceIdsKnown = false;
   private canvasResizeLocked = false;
   private canvasResizeWarned = false;
   private lastCanvasSize: { width: number; height: number } | null = null;
@@ -300,11 +301,45 @@ export class DiceService {
     this.rolling = false;
     this.dice = buildEmptyDice();
     this.pendingRerollIndices = [];
+    this.liveDiceIdsKnown = false;
     devInfo('[DiceService] startNewRound -> reset state');
     if (currentIds.length && this.diceBox?.setHeldState) {
       this.applyHeldVisuals(currentIds, false);
     }
     this.syncHeldVisuals();
+    this.emitChange();
+  }
+
+  hydrateRoundState({
+    values,
+    holds,
+    rollsThisRound
+  }: {
+    values: Array<number | null>;
+    holds: Array<boolean>;
+    rollsThisRound: number;
+  }) {
+    const seed = `${Date.now()}`;
+    this.rollsThisRound = Math.max(0, Math.min(MAX_ROLLS_PER_ROUND, Math.floor(rollsThisRound)));
+    this.rolling = false;
+    this.pendingRerollIndices = [];
+    this.liveDiceIdsKnown = false;
+
+    this.dice = Array.from({ length: DIE_COUNT }, (_, index) => ({
+      index,
+      value: typeof values[index] === 'number' ? values[index]! : 0,
+      sides: 6,
+      held: !!holds[index],
+      groupId: '-1',
+      rollId: `resume-${index}-${seed}`
+    }));
+
+    try {
+      this.diceBox?.clear?.();
+    } catch {
+      // ignore
+    }
+
     this.emitChange();
   }
 
@@ -321,6 +356,35 @@ export class DiceService {
     });
     try {
       await this.diceBox.roll(`${DIE_COUNT}d6`);
+    } catch (err) {
+      this.rolling = false;
+      this.rollsThisRound = Math.max(0, this.rollsThisRound - 1);
+      this.emitChange();
+      throw err;
+    }
+  }
+
+  async rollIndices(indices: number[]) {
+    if (this.guardRollStart('rollIndices')) return;
+    const unique = Array.from(new Set(indices))
+      .map((idx) => Math.floor(idx))
+      .filter((idx) => idx >= 0 && idx < DIE_COUNT);
+    if (!unique.length) {
+      console.warn('[DiceService] rollIndices -> no indices provided');
+      return;
+    }
+
+    this.logViewportMetrics('before-rollIndices');
+    this.rollsThisRound += 1;
+    this.rolling = true;
+    this.pendingRerollIndices = unique;
+    this.emitChange();
+    devInfo(`[DiceService] rollIndices -> roll ${unique.length}d6`, {
+      rollsThisRound: this.rollsThisRound,
+      indices: unique
+    });
+    try {
+      await this.diceBox.roll(`${unique.length}d6`);
     } catch (err) {
       this.rolling = false;
       this.rollsThisRound = Math.max(0, this.rollsThisRound - 1);
@@ -434,7 +498,8 @@ export class DiceService {
       };
     });
 
-    const isFirstRoll = this.rollsThisRound === 1 || this.dice.length === 0;
+    const isFirstRoll =
+      (this.rollsThisRound === 1 || this.dice.length === 0) && this.pendingRerollIndices.length === 0;
 
     if (isFirstRoll) {
       devDebug('[DiceService] roll complete (first roll)', {
@@ -462,6 +527,7 @@ export class DiceService {
 
     this.pendingRerollIndices = [];
     this.rolling = false;
+    this.liveDiceIdsKnown = true;
     devDebug('[DiceService] roll complete -> snapshot', this.getSnapshot());
     this.logViewportMetrics('roll-complete');
     this.syncHeldVisuals();
@@ -600,9 +666,13 @@ export class DiceService {
       }
       return;
     }
+    if (!this.liveDiceIdsKnown || this.dice.every((d) => d.groupId === '-1')) {
+      return;
+    }
 
-    const heldIds = this.dice.filter((d) => d.held && d.rollId).map((d) => d.rollId);
-    const unheldIds = this.dice.filter((d) => !d.held && d.rollId).map((d) => d.rollId);
+    const liveDice = this.dice.filter((d) => d.groupId !== '-1' && d.rollId);
+    const heldIds = liveDice.filter((d) => d.held).map((d) => d.rollId);
+    const unheldIds = liveDice.filter((d) => !d.held).map((d) => d.rollId);
     if (unheldIds.length) {
       this.applyHeldVisuals(unheldIds, false);
     }

@@ -9,6 +9,8 @@ type StubService = DiceServiceAdapter & {
   record: {
     rollCalls: number;
     rerollCalls: number;
+    rollIndicesCalls: number;
+    hydrateCalls: number;
     toggleCalls: number[];
     startCalls: number;
   };
@@ -48,6 +50,8 @@ function createStubService(initial: DiceServiceSnapshot = baseSnapshot): StubSer
   const record = {
     rollCalls: 0,
     rerollCalls: 0,
+    rollIndicesCalls: 0,
+    hydrateCalls: 0,
     toggleCalls: [] as number[],
     startCalls: 0
   };
@@ -73,6 +77,12 @@ function createStubService(initial: DiceServiceSnapshot = baseSnapshot): StubSer
     },
     async rerollUnheld() {
       record.rerollCalls += 1;
+    },
+    async rollIndices(_indices: number[]) {
+      record.rollIndicesCalls += 1;
+    },
+    hydrateRoundState(_state: { values: Array<number | null>; holds: Array<boolean>; rollsThisRound: number }) {
+      record.hydrateCalls += 1;
     },
     toggleHold(index: number) {
       record.toggleCalls.push(index);

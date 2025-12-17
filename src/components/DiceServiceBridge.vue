@@ -24,7 +24,11 @@ async function initializeService() {
     await service.init();
     service.updateConfig(configSnapshot());
     store.attachDiceService(service);
-    service.startNewRound();
+    service.hydrateRoundState({
+      values: store.engineState.dice,
+      holds: store.engineState.holds,
+      rollsThisRound: store.engineState.rollsThisRound
+    });
     return true;
   } catch (err) {
     store.setServiceError((err as Error).message);
@@ -43,7 +47,7 @@ async function handleContextLost(event: Event) {
   disposeDiceService();
   const ok = await initializeService();
   if (ok) {
-    store.setServiceError('Dice display recovered; starting a new round.');
+    store.setServiceError('Dice display recovered.');
   } else {
     store.setServiceError('Failed to recover the 3D dice. Please reload.');
   }

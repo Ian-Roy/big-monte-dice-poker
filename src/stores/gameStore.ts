@@ -2,12 +2,19 @@ import { computed, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 
 import { GameEngine, type CategoryKey, type GameState } from '../game/engine';
-import { emptySnapshot, snapshotFromService, type DiceSnapshot } from '../shared/DiceState';
+import { snapshotFromService, type DiceLocks, type DiceSnapshot, type DiceValues } from '../shared/DiceState';
 import type { DiceService, DiceServiceSnapshot } from '../shared/DiceService';
 
 export type DiceServiceAdapter = Pick<
   DiceService,
-  'rollAll' | 'rerollUnheld' | 'toggleHold' | 'startNewRound' | 'onChange' | 'getSnapshot'
+  | 'rollAll'
+  | 'rerollUnheld'
+  | 'rollIndices'
+  | 'hydrateRoundState'
+  | 'toggleHold'
+  | 'startNewRound'
+  | 'onChange'
+  | 'getSnapshot'
 >;
 
 const GAME_STATE_STORAGE_KEY = 'big-monte:engine-state';
@@ -80,7 +87,12 @@ export const useGameStore = defineStore('game', () => {
     }
   }
   const engineState = ref(engine.getState());
-  const diceSnapshot = ref<DiceSnapshot>(emptySnapshot());
+  const diceSnapshot = ref<DiceSnapshot>({
+    values: [...engineState.value.dice] as DiceValues,
+    locks: [...engineState.value.holds] as DiceLocks,
+    rollsThisRound: engineState.value.rollsThisRound,
+    isRolling: false
+  });
   const serviceReady = ref(false);
   const serviceError = ref<string | null>(null);
   const lastError = ref<string | null>(null);
@@ -91,13 +103,24 @@ export const useGameStore = defineStore('game', () => {
   const categories = computed(() => engineState.value.categories);
   const totals = computed(() => engineState.value.totals);
   const isRolling = computed(() => diceSnapshot.value.isRolling);
-  const rollsThisRound = computed(() => diceSnapshot.value.rollsThisRound);
+  const rollsThisRound = computed(() => engineState.value.rollsThisRound);
   const rollLimit = computed(() => engineState.value.maxRolls);
+
+  function syncDiceSnapshot(isRollingOverride?: boolean) {
+    const next: DiceSnapshot = {
+      values: [...engineState.value.dice] as DiceValues,
+      locks: [...engineState.value.holds] as DiceLocks,
+      rollsThisRound: engineState.value.rollsThisRound,
+      isRolling: typeof isRollingOverride === 'boolean' ? isRollingOverride : diceSnapshot.value.isRolling
+    };
+    diceSnapshot.value = next;
+  }
 
   watch(
     engineState,
     (state) => {
       persistGameState(state);
+      syncDiceSnapshot();
     },
     { deep: true, immediate: true }
   );
@@ -136,14 +159,19 @@ export const useGameStore = defineStore('game', () => {
 
   function handleServiceUpdate(raw: DiceServiceSnapshot) {
     const mapped = snapshotFromService(raw);
-    diceSnapshot.value = mapped;
     serviceReady.value = true;
     setServiceError(null);
     syncEngineRoll(mapped);
     syncEngineHolds(mapped);
+    syncDiceSnapshot(mapped.isRolling);
   }
 
   function syncEngineHolds(snapshot: DiceSnapshot) {
+    const engineRolls = engineState.value.rollsThisRound;
+    if (engineRolls > 0 && snapshot.rollsThisRound === 0) {
+      // When resuming a saved game, the dice service starts fresh. Do not overwrite persisted holds.
+      return;
+    }
     const currentHolds = engineState.value.holds;
     const desiredHolds = snapshot.locks;
     let changed = false;
@@ -179,7 +207,7 @@ export const useGameStore = defineStore('game', () => {
     diceUnsub.value = null;
     diceService.value = null;
     serviceReady.value = false;
-    diceSnapshot.value = emptySnapshot();
+    syncDiceSnapshot(false);
   }
 
   async function rollAll() {
@@ -203,8 +231,39 @@ export const useGameStore = defineStore('game', () => {
       lastError.value = 'Dice service not attached';
       return;
     }
+    const state = engineState.value;
+    if (state.completed) return;
+    if (state.rollsThisRound === 0) {
+      return rollAll();
+    }
+
+    const unheldIndices = state.holds
+      .map((held, idx) => (!held ? idx : -1))
+      .filter((idx) => idx >= 0);
+    if (!unheldIndices.length) {
+      lastError.value = 'All dice are held';
+      return;
+    }
+
+    const service = diceService.value;
+    const snap = service.getSnapshot();
+    const canRerollInPlace =
+      snap.rollsThisRound === state.rollsThisRound &&
+      snap.rollsThisRound > 0 &&
+      snap.dice.length === state.dice.length &&
+      snap.dice.some((d) => d.groupId !== '-1');
+
     try {
-      await diceService.value.rerollUnheld();
+      if (canRerollInPlace) {
+        await service.rerollUnheld();
+      } else {
+        service.hydrateRoundState({
+          values: state.dice,
+          holds: state.holds,
+          rollsThisRound: state.rollsThisRound
+        });
+        await service.rollIndices(unheldIndices);
+      }
     } catch (err) {
       const message = (err as Error)?.message ?? 'Re-roll failed';
       lastError.value = `Re-roll failed: ${message}`;
