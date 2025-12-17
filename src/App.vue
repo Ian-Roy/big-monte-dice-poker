@@ -1,31 +1,38 @@
 <template>
-  <div id="app-shell" :class="{ 'orientation-locked': orientationLocked }">
-    <AppTopControls
-      :active-layer="activeLayer"
-      :on-show-dice="showDice"
-      @change-layer="setActiveLayer"
-    />
-    <AppBottomPanel
-      :active-layer="activeLayer"
-      :dice-layer-mode="diceVisibility"
-      @select="handleSelect"
-    />
-    <DiceServiceBridge />
-    <ConfirmDialog
-      v-if="pendingCategory"
-      :title="dialogTitle"
-      :message="dialogMessage"
-      @confirm="confirmScore"
-      @cancel="clearDialog"
-    />
-    <ToastStack :toasts="toasts" />
-    <TitleScreen
-      v-if="showTitleScreen"
+  <div id="app-root" :class="{ 'orientation-locked': orientationLocked }">
+    <TitlePage
+      v-if="currentPage === 'title'"
       :can-resume="canResumeGame"
       :summary="titleSummary"
       @resume="handleResumeGame"
       @start="handleStartGame"
+      @settings="navigateTo('settings')"
     />
+    <SettingsPage
+      v-else-if="currentPage === 'settings'"
+      @back="navigateTo('title')"
+    />
+    <div v-else id="app-shell">
+      <AppTopControls
+        :active-layer="activeLayer"
+        :on-show-dice="showDice"
+        @change-layer="setActiveLayer"
+      />
+      <AppBottomPanel
+        :active-layer="activeLayer"
+        :dice-layer-mode="diceVisibility"
+        @select="handleSelect"
+      />
+      <DiceServiceBridge />
+      <ConfirmDialog
+        v-if="pendingCategory"
+        :title="dialogTitle"
+        :message="dialogMessage"
+        @confirm="confirmScore"
+        @cancel="clearDialog"
+      />
+      <ToastStack :toasts="toasts" />
+    </div>
     <div v-if="orientationLocked" class="orientation-overlay">
       <div class="orientation-overlay__card">
         <h3>Rotate your device</h3>
@@ -43,7 +50,8 @@ import AppBottomPanel from './components/layout/AppBottomPanel.vue';
 import AppTopControls from './components/layout/AppTopControls.vue';
 import ConfirmDialog from './components/ui/ConfirmDialog.vue';
 import ToastStack from './components/ui/ToastStack.vue';
-import TitleScreen from './components/ui/TitleScreen.vue';
+import SettingsPage from './pages/SettingsPage.vue';
+import TitlePage from './pages/TitlePage.vue';
 import { useOrientationLock } from './composables/useOrientationLock';
 import { useToasts } from './composables/useToasts';
 import type { CategoryKey } from './game/engine';
@@ -54,16 +62,16 @@ import { useGameStore } from './stores/gameStore';
 const store = useGameStore();
 
 const { orientationLocked } = useOrientationLock({ maxMobileWidth: 900 });
+const currentPage = ref<'title' | 'settings' | 'game'>('title');
 const activeLayer = ref<ActiveLayer>('dice');
 const diceVisibility = computed<'visible' | 'hidden'>(() => {
   if (orientationLocked.value) return 'hidden';
   return activeLayer.value === 'dice' ? 'visible' : 'hidden';
 });
-const bodyScrollLocked = computed(() => !orientationLocked.value);
+const bodyScrollLocked = computed(() => currentPage.value === 'game' && !orientationLocked.value);
 
 const pendingCategory = ref<CategoryKey | null>(null);
 const { toasts, pushToast } = useToasts({ max: 3, durationMs: 1800 });
-const showTitleScreen = ref(true);
 
 const dialogTitle = computed(() => {
   if (!pendingCategory.value) return '';
@@ -106,6 +114,10 @@ const titleSummary = computed(() => ({
   score: store.totals.grand ?? 0
 }));
 
+function navigateTo(page: typeof currentPage.value) {
+  currentPage.value = page;
+}
+
 function handleSelect(key: CategoryKey) {
   pendingCategory.value = key;
 }
@@ -136,18 +148,15 @@ function showDice() {
   setActiveLayer('dice');
 }
 
-function hideTitleScreen() {
-  showTitleScreen.value = false;
-}
-
 function handleResumeGame() {
-  hideTitleScreen();
+  currentPage.value = 'game';
+  setActiveLayer(store.engineState.completed ? 'summary' : 'dice');
 }
 
 function handleStartGame() {
   store.resetGame();
   setActiveLayer('dice');
-  hideTitleScreen();
+  currentPage.value = 'game';
 }
 
 onBeforeUnmount(() => {
@@ -184,9 +193,26 @@ watch(
   },
   { immediate: true }
 );
+
+watch(
+  () => store.engineState.completed,
+  (complete) => {
+    if (!complete) return;
+    if (currentPage.value !== 'game') return;
+    setActiveLayer('summary');
+  }
+);
 </script>
 
 <style scoped>
+#app-root {
+  position: relative;
+  width: 100%;
+  height: var(--app-height, 100vh);
+  min-height: var(--app-height, 100vh);
+  overflow: hidden;
+}
+
 #app-shell {
   position: relative;
   display: flex;
@@ -203,7 +229,7 @@ watch(
   overflow: hidden;
 }
 
-#app-shell.orientation-locked > :not(.orientation-overlay) {
+#app-root.orientation-locked > :not(.orientation-overlay) {
   visibility: hidden;
   pointer-events: none;
 }

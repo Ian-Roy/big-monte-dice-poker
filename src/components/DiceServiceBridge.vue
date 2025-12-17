@@ -1,19 +1,28 @@
 <template></template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue';
+import { onBeforeUnmount, onMounted, watch } from 'vue';
 
 import { getDiceService, disposeDiceService } from '../shared/diceServiceInstance';
 import { DICE_CONTEXT_LOST_EVENT } from '../shared/DiceService';
 import { useGameStore } from '../stores/gameStore';
+import { useSettingsStore } from '../stores/settingsStore';
 
 const store = useGameStore();
+const settings = useSettingsStore();
 let recovering = false;
 
+const configSnapshot = () => ({
+  diceColor: settings.diceColorHex,
+  heldColor: settings.heldColorHex,
+  physics: { ...settings.physics }
+});
+
 async function initializeService() {
-  const service = getDiceService('#dice-box');
+  const service = getDiceService('#dice-box', configSnapshot());
   try {
     await service.init();
+    service.updateConfig(configSnapshot());
     store.attachDiceService(service);
     service.startNewRound();
     return true;
@@ -47,6 +56,15 @@ onMounted(() => {
     window.addEventListener(DICE_CONTEXT_LOST_EVENT, handleContextLost as EventListener);
   }
 });
+
+watch(
+  () => configSnapshot(),
+  (next) => {
+    const service = getDiceService('#dice-box', next);
+    service.updateConfig(next);
+  },
+  { deep: true }
+);
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {

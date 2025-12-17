@@ -1,7 +1,7 @@
 import DiceBox from '@3d-dice/dice-box';
 
-const DICE_BOX_DEFAULT_COLOR = '#3b82f6';
-const DICE_BOX_HELD_COLOR = '#22c55e';
+const DEFAULT_DICE_COLOR = '#3b82f6';
+const DEFAULT_HELD_COLOR = '#22c55e';
 
 export const DICE_CONTEXT_LOST_EVENT = 'dice-service:context-lost';
 
@@ -26,6 +26,24 @@ const MAX_ROLLS_PER_ROUND = 3;
 const DIE_COUNT = 5;
 
 type NormalizedDie = Pick<GameDie, 'value' | 'sides' | 'groupId' | 'rollId'>;
+
+export type DicePhysicsConfig = Partial<{
+  throwForce: number;
+  spinForce: number;
+  gravity: number;
+  mass: number;
+  friction: number;
+  restitution: number;
+  linearDamping: number;
+  angularDamping: number;
+  startingHeight: number;
+}>;
+
+export type DiceServiceConfig = {
+  diceColor?: string;
+  heldColor?: string;
+  physics?: DicePhysicsConfig;
+};
 
 const DEV_LOGS = import.meta.env.DEV;
 
@@ -141,6 +159,8 @@ export class DiceService {
   private pendingRerollIndices: number[] = [];
   private containerSelector: string;
   private containerEl: HTMLElement | null = null;
+  private diceColor = DEFAULT_DICE_COLOR;
+  private heldColor = DEFAULT_HELD_COLOR;
   private pointerListener: ((ev: PointerEvent) => void) | null = null;
   private windowPointerListener: ((ev: PointerEvent) => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -150,11 +170,15 @@ export class DiceService {
   private lastCanvasSize: { width: number; height: number } | null = null;
   private contextLostNotified = false;
 
- constructor(containerSelector = '#dice-box') {
+  constructor(containerSelector = '#dice-box', config?: DiceServiceConfig) {
     this.containerSelector = containerSelector;
     const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
     const assetPath = `${base}assets/dice-box/`;
     devInfo('[DiceService] configuring DiceBox', { assetPath, containerSelector });
+
+    this.diceColor = config?.diceColor ?? DEFAULT_DICE_COLOR;
+    this.heldColor = config?.heldColor ?? DEFAULT_HELD_COLOR;
+    const physics = config?.physics ?? {};
 
     this.diceBox = new DiceBox({
       assetPath,
@@ -162,13 +186,32 @@ export class DiceService {
       scale: 5, // slightly smaller to fit full-height viewport
       delay: 6,
       offscreen: false,
-      themeColor: DICE_BOX_DEFAULT_COLOR,
+      themeColor: this.diceColor,
+      ...physics,
       onDiePicked: (hit: any) => this.handlePickedDie(hit)
     });
 
     this.diceBox.onRollComplete = (rollResult: any) => {
       this.handleRollComplete(rollResult);
     };
+  }
+
+  updateConfig(config: DiceServiceConfig) {
+    if (config?.diceColor) this.diceColor = config.diceColor;
+    if (config?.heldColor) this.heldColor = config.heldColor;
+
+    const updatePayload = {
+      themeColor: this.diceColor,
+      ...(config.physics ?? {})
+    };
+    if (this.diceBox?.updateConfig) {
+      try {
+        this.diceBox.updateConfig(updatePayload);
+      } catch (err) {
+        console.warn('[DiceService] updateConfig failed', err);
+      }
+    }
+    this.syncHeldVisuals();
   }
 
   async init() {
@@ -575,7 +618,7 @@ export class DiceService {
         ids,
         held,
         scale: held ? 1.08 : 1,
-        color: held ? DICE_BOX_HELD_COLOR : DICE_BOX_DEFAULT_COLOR
+        color: held ? this.heldColor : this.diceColor
       });
     } catch (err) {
       console.warn('[DiceService] setHeldState failed', { held, count: ids.length, err });

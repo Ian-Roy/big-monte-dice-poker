@@ -18,9 +18,12 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 
 import { useGameStore } from "../../stores/gameStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { rgba } from "../../shared/color";
 
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 const store = useGameStore();
+const settings = useSettingsStore();
 const diceValues = computed(() => store.diceSnapshot.values);
 const holds = computed(() => store.diceSnapshot.locks);
 const isRolling = computed(() => store.isRolling);
@@ -41,18 +44,22 @@ const DIE_SPACING = 8;
 const DIE_PADDING = 10;
 const DIE_COUNT = 5;
 const DIE_TOGGLE_TOLERANCE = 8;
-const DICE_PREVIEW_COLORS = {
-  default: {
-    fill: "rgba(59, 130, 246, 0.18)",
-    stroke: "rgba(37, 99, 235, 0.65)",
-    text: "#dbeaee"
-  },
-  held: {
-    fill: "rgba(34, 197, 94, 0.24)",
-    stroke: "#22c55e",
-    text: "#dfffe7"
-  }
-};
+const previewColors = computed(() => {
+  const base = settings.diceColorHex;
+  const held = settings.heldColorHex;
+  return {
+    default: {
+      fill: rgba(base, 0.18),
+      stroke: rgba(base, 0.7),
+      text: "#dbeaee"
+    },
+    held: {
+      fill: rgba(held, 0.26),
+      stroke: held,
+      text: "#f1fff6"
+    }
+  };
+});
 
 function drawDice() {
   if (typeof window === "undefined") return;
@@ -78,7 +85,7 @@ function drawDice() {
   diceValues.value.slice(0, DIE_COUNT).forEach((value, idx) => {
     const isHeld = !!holds.value[idx];
     const x = DIE_PADDING + idx * (DIE_SIZE + DIE_SPACING);
-    const palette = isHeld ? DICE_PREVIEW_COLORS.held : DICE_PREVIEW_COLORS.default;
+    const palette = isHeld ? previewColors.value.held : previewColors.value.default;
 
     ctx.fillStyle = palette.fill;
     ctx.strokeStyle = palette.stroke;
@@ -193,6 +200,7 @@ onBeforeUnmount(() => {
 });
 
 watch([diceValues, holds], scheduleDraw, { immediate: true });
+watch([() => settings.diceColorHex, () => settings.heldColorHex], scheduleDraw);
 </script>
 
 <style scoped>
