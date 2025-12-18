@@ -18,12 +18,10 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 
 import { useGameStore } from "../../stores/gameStore";
-import { useSettingsStore } from "../../stores/settingsStore";
 import { rgba } from "../../shared/color";
 
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 const store = useGameStore();
-const settings = useSettingsStore();
 const diceValues = computed(() => store.diceSnapshot.values);
 const holds = computed(() => store.diceSnapshot.locks);
 const isRolling = computed(() => store.isRolling);
@@ -45,8 +43,8 @@ const DIE_PADDING = 10;
 const DIE_COUNT = 5;
 const DIE_TOGGLE_TOLERANCE = 8;
 const previewColors = computed(() => {
-  const base = settings.diceColorHex;
-  const held = settings.heldColorHex;
+  const base = store.activeDiceColorHex;
+  const held = store.activeHeldColorHex;
   return {
     default: {
       fill: rgba(base, 0.18),
@@ -200,7 +198,7 @@ onBeforeUnmount(() => {
 });
 
 watch([diceValues, holds], scheduleDraw, { immediate: true });
-watch([() => settings.diceColorHex, () => settings.heldColorHex], scheduleDraw);
+watch([() => store.activeDiceColorHex, () => store.activeHeldColorHex], scheduleDraw);
 </script>
 
 <style scoped>

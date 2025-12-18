@@ -48,7 +48,9 @@ On small screens, the app **locks to portrait**. In landscape on mobile widths, 
 
 ### Overlays & UI utilities
 
-- `src/components/ui/TitleScreen.vue` (start/resume)
+- `src/pages/TitlePage.vue` (saved games + create game)
+- `src/components/ui/NewGameDialog.vue` (new game setup: players/names/colors)
+- `src/components/ui/TurnHandoffOverlay.vue` (pass-the-phone turn prompt)
 - `src/components/ui/ConfirmDialog.vue` (confirm scoring)
 - `src/components/ui/ToastStack.vue` (ephemeral notifications)
 
@@ -80,12 +82,13 @@ More details:
 ## State flow (Pinia store)
 
 - `src/stores/gameStore.ts`
-  - Single store for game engine state, dice snapshot, and persistence (localStorage)
-  - UI calls actions like `rollAll`, `rerollUnheld`, `toggleHold`, `scoreCategory`
+  - Single store for session state (1–4 players), active player engine state, and persistence (localStorage)
+  - UI calls actions like `createNewSessionSlot`, `advanceToNextPlayer`, `rollAll`, `rerollUnheld`, `toggleHold`, `scoreCategory`
 
 The store is the “source of truth” for:
 - Current dice values + held flags (via dice service snapshot)
-- Game progress + scoring (via `GameEngine`)
+- Per-player game progress + scoring (via `GameEngine`)
+- Pass-and-play UI helpers (leader/next-player + per-player dice colors)
 - UI enabling/disabling (e.g. “can score”, “service ready”, “rolling”)
 
 ---

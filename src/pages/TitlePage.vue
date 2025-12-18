@@ -46,11 +46,14 @@
                 <dd>{{ save.round }} / {{ save.maxRounds }}</dd>
               </div>
               <div>
-                <dt>Score</dt>
+                <dt>Leader</dt>
                 <dd>{{ save.score }}</dd>
               </div>
             </dl>
 
+            <p class="save-meta">
+              Players {{ save.playersCount }} · Leader {{ save.leaderName }} · Current {{ save.activePlayerName }}
+            </p>
             <p class="save-meta">Scored {{ save.scoredCount }} / {{ save.totalScorable }}</p>
 
             <button type="button" class="title-btn primary" @click="$emit('resume', save.id)">
@@ -63,9 +66,7 @@
       </section>
 
       <div class="title-actions">
-        <button type="button" class="title-btn secondary" @click="$emit('start')">
-          {{ saves.length ? 'Start new game' : 'Start playing' }}
-        </button>
+        <button type="button" class="title-btn secondary" @click="$emit('create-game')">Create game</button>
       </div>
 
       <div class="title-utilities">
@@ -102,6 +103,9 @@ import { promptPwaInstall, refreshPwa, usePwaState } from '../pwa/pwaState';
 
 export type SavedGameSummary = {
   id: string;
+  playersCount: number;
+  leaderName: string;
+  activePlayerName: string;
   round: number;
   maxRounds: number;
   scoredCount: number;
@@ -159,7 +163,7 @@ async function handleRefresh() {
 
 defineEmits<{
   (event: 'resume', id: string): void;
-  (event: 'start'): void;
+  (event: 'create-game'): void;
   (event: 'delete', id: string): void;
   (event: 'settings'): void;
 }>();

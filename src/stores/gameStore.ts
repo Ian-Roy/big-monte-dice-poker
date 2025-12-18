@@ -4,6 +4,11 @@ import { defineStore } from 'pinia';
 import { GameEngine, type CategoryKey, type GameState } from '../game/engine';
 import { snapshotFromService, type DiceLocks, type DiceSnapshot, type DiceValues } from '../shared/DiceState';
 import type { DiceService, DiceServiceSnapshot } from '../shared/DiceService';
+import { buildDefaultPlayerNames } from '../shared/casinoNames';
+import { ensureBrighterThanHex } from '../shared/color';
+import type { GameSessionMode, GameSessionPlayer, GameSessionState, PlayerAppearance } from '../shared/gameSession';
+import { getLeaderIndex, isSessionCompleted } from '../shared/gameSession';
+import { DICE_COLOR_PRESETS, type DiceColorKey, useSettingsStore } from './settingsStore';
 
 export type DiceServiceAdapter = Pick<
   DiceService,
@@ -11,6 +16,7 @@ export type DiceServiceAdapter = Pick<
   | 'rerollUnheld'
   | 'rollIndices'
   | 'hydrateRoundState'
+  | 'updateConfig'
   | 'toggleHold'
   | 'startNewRound'
   | 'onChange'
@@ -20,7 +26,7 @@ export type DiceServiceAdapter = Pick<
 export const MAX_SAVE_SLOTS = 4;
 
 const GAME_SAVES_STORAGE_KEY = 'big-monte:game-saves';
-const GAME_SAVES_STORAGE_VERSION = 1;
+const GAME_SAVES_STORAGE_VERSION = 2;
 
 const LEGACY_GAME_STATE_STORAGE_KEY = 'big-monte:engine-state';
 const LEGACY_GAME_STATE_STORAGE_VERSION = 1;
@@ -35,15 +41,46 @@ export type GameSaveSlot = {
   id: string;
   createdAt: number;
   updatedAt: number;
+  state: GameSessionState;
+};
+
+type LegacyGameSaveSlotV1 = {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
   state: GameState;
 };
 
-type PersistedGameSavesPayload = {
-  version: number;
+type PersistedGameSavesPayloadV2 = {
+  version: 2;
   savedAt: number;
   activeId: string | null;
   slots: GameSaveSlot[];
 };
+
+type PersistedGameSavesPayloadV1 = {
+  version: 1;
+  savedAt: number;
+  activeId: string | null;
+  slots: LegacyGameSaveSlotV1[];
+};
+
+type PersistedGameSavesPayload = PersistedGameSavesPayloadV1 | PersistedGameSavesPayloadV2;
+
+export type NewGamePlayerSetup = {
+  name: string;
+  appearance: PlayerAppearance;
+};
+
+export type NewGameSetup = {
+  mode: GameSessionMode;
+  players: NewGamePlayerSetup[];
+};
+
+const COLOR_KEYS = new Set<DiceColorKey>(Object.keys(DICE_COLOR_PRESETS) as DiceColorKey[]);
+const COLOR_KEY_BY_HEX = new Map<string, DiceColorKey>(
+  Object.entries(DICE_COLOR_PRESETS).map(([key, preset]) => [preset.hex.toLowerCase(), key as DiceColorKey])
+);
 
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -80,13 +117,37 @@ function generateSaveId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeSlots(rawSlots: unknown): GameSaveSlot[] {
+function clampIndex(value: unknown, maxExclusive: number, fallback: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  const rounded = Math.trunc(value);
+  if (rounded < 0) return 0;
+  if (rounded >= maxExclusive) return Math.max(0, maxExclusive - 1);
+  return rounded;
+}
+
+function toColorKey(value: unknown, fallback: DiceColorKey): DiceColorKey {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith('#')) {
+    const byHex = COLOR_KEY_BY_HEX.get(trimmed.toLowerCase());
+    return byHex ?? fallback;
+  }
+  const asKey = trimmed as DiceColorKey;
+  return COLOR_KEYS.has(asKey) ? asKey : fallback;
+}
+
+function createFreshGameState() {
+  return new GameEngine().resetGame();
+}
+
+function normalizeLegacySlotsV1(rawSlots: unknown): LegacyGameSaveSlotV1[] {
   if (!Array.isArray(rawSlots)) return [];
-  const slots: GameSaveSlot[] = [];
+  const slots: LegacyGameSaveSlotV1[] = [];
   const seen = new Set<string>();
   rawSlots.forEach((raw) => {
     if (!raw || typeof raw !== 'object') return;
-    const slot = raw as Partial<GameSaveSlot>;
+    const slot = raw as Partial<LegacyGameSaveSlotV1>;
     if (typeof slot.id !== 'string' || !slot.id.trim()) return;
     if (!slot.state || typeof slot.state !== 'object') return;
     if (seen.has(slot.id)) return;
@@ -98,6 +159,70 @@ function normalizeSlots(rawSlots: unknown): GameSaveSlot[] {
       updatedAt,
       state: slot.state as GameState
     });
+    seen.add(slot.id);
+  });
+
+  return slots
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, MAX_SAVE_SLOTS);
+}
+
+function normalizeSessionState(rawState: unknown, fallbackAppearance: PlayerAppearance): GameSessionState | null {
+  if (!rawState || typeof rawState !== 'object') return null;
+  const state = rawState as Partial<GameSessionState>;
+  const rawPlayers = Array.isArray(state.players) ? state.players : [];
+  if (!rawPlayers.length) return null;
+
+  const players: GameSessionPlayer[] = [];
+  const seenIds = new Set<string>();
+
+  rawPlayers.slice(0, 4).forEach((rawPlayer, index) => {
+    if (!rawPlayer || typeof rawPlayer !== 'object') return;
+    const player = rawPlayer as Partial<GameSessionPlayer>;
+    const rawId = typeof player.id === 'string' ? player.id.trim() : '';
+    const id = rawId && !seenIds.has(rawId) ? rawId : generateSaveId();
+    seenIds.add(id);
+
+    const nameRaw = typeof player.name === 'string' ? player.name.trim() : '';
+    const name = nameRaw || `Player ${index + 1}`;
+
+    const appearanceRaw = player.appearance ?? fallbackAppearance;
+    const diceColor = toColorKey(appearanceRaw.diceColor, fallbackAppearance.diceColor);
+    const heldColor = toColorKey(appearanceRaw.heldColor, fallbackAppearance.heldColor);
+
+    const gameState =
+      player.state && typeof player.state === 'object' ? (player.state as GameState) : createFreshGameState();
+
+    players.push({
+      id,
+      name,
+      appearance: { diceColor, heldColor },
+      state: gameState
+    });
+  });
+
+  if (!players.length) return null;
+  const activePlayerIndex = clampIndex(state.activePlayerIndex, players.length, 0);
+  const mode: GameSessionMode =
+    state.mode === 'solo' || state.mode === 'pass-and-play' ? state.mode : players.length > 1 ? 'pass-and-play' : 'solo';
+
+  return { mode, players, activePlayerIndex };
+}
+
+function normalizeSessionSlotsV2(rawSlots: unknown, fallbackAppearance: PlayerAppearance): GameSaveSlot[] {
+  if (!Array.isArray(rawSlots)) return [];
+  const slots: GameSaveSlot[] = [];
+  const seen = new Set<string>();
+  rawSlots.forEach((raw) => {
+    if (!raw || typeof raw !== 'object') return;
+    const slot = raw as Partial<GameSaveSlot>;
+    if (typeof slot.id !== 'string' || !slot.id.trim()) return;
+    if (seen.has(slot.id)) return;
+    const state = normalizeSessionState(slot.state, fallbackAppearance);
+    if (!state) return;
+    const createdAt = typeof slot.createdAt === 'number' && Number.isFinite(slot.createdAt) ? slot.createdAt : Date.now();
+    const updatedAt = typeof slot.updatedAt === 'number' && Number.isFinite(slot.updatedAt) ? slot.updatedAt : createdAt;
+    slots.push({ id: slot.id, createdAt, updatedAt, state });
     seen.add(slot.id);
   });
 
@@ -130,7 +255,7 @@ function persistGameSaves(slots: GameSaveSlot[], activeId: string | null) {
     storage.removeItem(GAME_SAVES_STORAGE_KEY);
     return;
   }
-  const payload: PersistedGameSavesPayload = {
+  const payload: PersistedGameSavesPayloadV2 = {
     version: GAME_SAVES_STORAGE_VERSION,
     savedAt: Date.now(),
     activeId,
@@ -143,7 +268,23 @@ function persistGameSaves(slots: GameSaveSlot[], activeId: string | null) {
   }
 }
 
-function loadPersistedGameSaves(): { slots: GameSaveSlot[]; activeId: string | null } {
+function buildSoloSessionFromGameState(state: GameState, options: { appearance: PlayerAppearance; name?: string }): GameSessionState {
+  const name = options.name?.trim() || buildDefaultPlayerNames(1)[0] || 'Player 1';
+  return {
+    mode: 'solo',
+    activePlayerIndex: 0,
+    players: [
+      {
+        id: generateSaveId(),
+        name,
+        appearance: { ...options.appearance },
+        state
+      }
+    ]
+  };
+}
+
+function loadPersistedGameSaves(options: { fallbackAppearance: PlayerAppearance }): { slots: GameSaveSlot[]; activeId: string | null } {
   const storage = getStorage();
   if (!storage) return { slots: [], activeId: null };
 
@@ -151,13 +292,31 @@ function loadPersistedGameSaves(): { slots: GameSaveSlot[]; activeId: string | n
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as PersistedGameSavesPayload;
-      if (!parsed || parsed.version !== GAME_SAVES_STORAGE_VERSION) {
+      if (!parsed || (parsed.version !== 1 && parsed.version !== 2)) {
         return { slots: [], activeId: null };
       }
-      const slots = normalizeSlots(parsed.slots);
+
+      if (parsed.version === 2) {
+        const slots = normalizeSessionSlotsV2(parsed.slots, options.fallbackAppearance);
+        const candidateActive = typeof parsed.activeId === 'string' ? parsed.activeId : null;
+        const activeId = candidateActive && slots.some((slot) => slot.id === candidateActive) ? candidateActive : slots[0]?.id ?? null;
+        return { slots, activeId };
+      }
+
+      const legacySlots = normalizeLegacySlotsV1(parsed.slots);
+      const migrated: GameSaveSlot[] = legacySlots.map((slot) => ({
+        id: slot.id,
+        createdAt: slot.createdAt,
+        updatedAt: slot.updatedAt,
+        state: buildSoloSessionFromGameState(slot.state, { appearance: options.fallbackAppearance })
+      }));
       const candidateActive = typeof parsed.activeId === 'string' ? parsed.activeId : null;
-      const activeId = candidateActive && slots.some((slot) => slot.id === candidateActive) ? candidateActive : slots[0]?.id ?? null;
-      return { slots, activeId };
+      const activeId =
+        candidateActive && migrated.some((slot) => slot.id === candidateActive)
+          ? candidateActive
+          : migrated[0]?.id ?? null;
+      persistGameSaves(migrated, activeId);
+      return { slots: migrated, activeId };
     } catch (err) {
       console.warn('[GameStore] failed to parse saved games; ignoring snapshot.', err);
       return { slots: [], activeId: null };
@@ -176,7 +335,7 @@ function loadPersistedGameSaves(): { slots: GameSaveSlot[]; activeId: string | n
     id,
     createdAt,
     updatedAt: createdAt,
-    state: legacy.state
+    state: buildSoloSessionFromGameState(legacy.state, { appearance: options.fallbackAppearance })
   };
 
   storage.removeItem(LEGACY_GAME_STATE_STORAGE_KEY);
@@ -185,21 +344,33 @@ function loadPersistedGameSaves(): { slots: GameSaveSlot[]; activeId: string | n
 }
 
 export const useGameStore = defineStore('game', () => {
-  const { slots: initialSlots, activeId: initialActiveId } = loadPersistedGameSaves();
+  const settings = useSettingsStore();
+  const fallbackAppearance: PlayerAppearance = {
+    diceColor: settings.appearance.diceColor,
+    heldColor: settings.appearance.heldColor
+  };
+
+  const { slots: initialSlots, activeId: initialActiveId } = loadPersistedGameSaves({
+    fallbackAppearance
+  });
   const saveSlots = ref<GameSaveSlot[]>(initialSlots);
   const activeSaveId = ref<string | null>(initialActiveId);
 
   const engine = new GameEngine();
-  const activeSlot = activeSaveId.value
-    ? saveSlots.value.find((slot) => slot.id === activeSaveId.value)
+  const activeSlotForHydration = activeSaveId.value
+    ? saveSlots.value.find((slot) => slot.id === activeSaveId.value) ?? null
     : null;
-  if (activeSlot) {
+  const activePlayerForHydration = activeSlotForHydration
+    ? activeSlotForHydration.state.players[activeSlotForHydration.state.activePlayerIndex]
+    : null;
+  if (activePlayerForHydration) {
     try {
-      engine.hydrateState(activeSlot.state);
+      engine.hydrateState(activePlayerForHydration.state);
     } catch (err) {
       console.warn('[GameStore] failed to hydrate saved state; falling back to defaults.', err);
     }
   }
+
   const engineState = ref(engine.getState());
   const diceSnapshot = ref<DiceSnapshot>({
     values: [...engineState.value.dice] as DiceValues,
@@ -213,6 +384,77 @@ export const useGameStore = defineStore('game', () => {
 
   const diceService = shallowRef<DiceServiceAdapter | null>(null);
   const diceUnsub = shallowRef<null | (() => void)>(null);
+
+  const activeSlot = computed(() => {
+    const id = activeSaveId.value;
+    if (!id) return null;
+    return saveSlots.value.find((slot) => slot.id === id) ?? null;
+  });
+
+  const session = computed(() => activeSlot.value?.state ?? null);
+  const players = computed(() => session.value?.players ?? []);
+  const activePlayerIndex = computed(() => session.value?.activePlayerIndex ?? 0);
+  const activePlayer = computed(() => {
+    const list = players.value;
+    const idx = activePlayerIndex.value;
+    return idx >= 0 && idx < list.length ? list[idx] : null;
+  });
+  const sessionCompleted = computed(() => (session.value ? isSessionCompleted(session.value) : false));
+  const isMultiplayer = computed(() => (players.value.length > 1 ? true : false));
+
+  function computeNextPlayerIndex(input: GameSessionState): number | null {
+    const count = input.players.length;
+    if (count <= 1) return null;
+    for (let offset = 1; offset <= count; offset += 1) {
+      const idx = (input.activePlayerIndex + offset) % count;
+      const candidate = input.players[idx];
+      if (candidate && candidate.state?.completed !== true) return idx;
+    }
+    return null;
+  }
+
+  const nextPlayerIndex = computed(() => {
+    const current = session.value;
+    if (!current) return null;
+    return computeNextPlayerIndex(current);
+  });
+
+  const nextPlayer = computed(() => {
+    const current = session.value;
+    const idx = nextPlayerIndex.value;
+    if (!current || idx === null) return null;
+    return current.players[idx] ?? null;
+  });
+
+  const leaderIndex = computed(() => (session.value ? getLeaderIndex(session.value) : null));
+  const leaderPlayer = computed(() => {
+    const current = session.value;
+    const idx = leaderIndex.value;
+    if (!current || idx === null) return null;
+    return current.players[idx] ?? null;
+  });
+
+  function colorHexForKey(key: DiceColorKey) {
+    return DICE_COLOR_PRESETS[key]?.hex ?? DICE_COLOR_PRESETS.blue.hex;
+  }
+
+  function heldHexForKeys(heldKey: DiceColorKey, baselineDiceHex: string) {
+    const base = colorHexForKey(heldKey);
+    return ensureBrighterThanHex(base, baselineDiceHex, 0.1);
+  }
+
+  const activeDiceColorHex = computed(() => {
+    const player = activePlayer.value;
+    const key = player?.appearance?.diceColor ?? settings.appearance.diceColor;
+    return colorHexForKey(key);
+  });
+
+  const activeHeldColorHex = computed(() => {
+    const player = activePlayer.value;
+    const diceHex = activeDiceColorHex.value;
+    const heldKey = player?.appearance?.heldColor ?? settings.appearance.heldColor;
+    return heldHexForKeys(heldKey, diceHex);
+  });
 
   const categories = computed(() => engineState.value.categories);
   const totals = computed(() => engineState.value.totals);
@@ -234,36 +476,6 @@ export const useGameStore = defineStore('game', () => {
     persistGameSaves(saveSlots.value, activeSaveId.value);
   }
 
-  function updateActiveSlotState(state: GameState) {
-    const activeId = activeSaveId.value;
-    if (!activeId) return;
-    const idx = saveSlots.value.findIndex((slot) => slot.id === activeId);
-    if (idx < 0) {
-      activeSaveId.value = null;
-      persistSavesSnapshot();
-      return;
-    }
-    const now = Date.now();
-    const nextSlots = [...saveSlots.value];
-    nextSlots[idx] = {
-      ...nextSlots[idx],
-      updatedAt: now,
-      state
-    };
-    nextSlots.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    saveSlots.value = nextSlots;
-    persistSavesSnapshot();
-  }
-
-  watch(
-    engineState,
-    (state) => {
-      updateActiveSlotState(state);
-      syncDiceSnapshot();
-    },
-    { deep: true, immediate: true, flush: 'sync' }
-  );
-
   function setEngineState() {
     engineState.value = engine.getState();
   }
@@ -276,11 +488,28 @@ export const useGameStore = defineStore('game', () => {
     });
   }
 
-  function tryHydrateSlot(slot: GameSaveSlot) {
+  function applyDiceThemeForPlayer(player: GameSessionPlayer | null) {
+    if (!diceService.value) return;
+    const diceKey = player?.appearance?.diceColor ?? settings.appearance.diceColor;
+    const heldKey = player?.appearance?.heldColor ?? settings.appearance.heldColor;
+    const diceHex = colorHexForKey(diceKey);
+    const heldHex = heldHexForKeys(heldKey, diceHex);
     try {
-      engine.hydrateState(slot.state);
+      diceService.value.updateConfig({ diceColor: diceHex, heldColor: heldHex });
+    } catch (err) {
+      console.warn('[GameStore] failed to update dice theme', err);
+    }
+  }
+
+  function tryHydrateSlot(slot: GameSaveSlot) {
+    const idx = clampIndex(slot.state.activePlayerIndex, slot.state.players.length, 0);
+    const player = slot.state.players[idx];
+    if (!player) return false;
+    try {
+      engine.hydrateState(player.state);
       setEngineState();
       hydrateDiceServiceFromState(engineState.value);
+      applyDiceThemeForPlayer(player);
       return true;
     } catch (err) {
       console.warn('[GameStore] failed to hydrate saved slot; removing it.', err);
@@ -288,29 +517,122 @@ export const useGameStore = defineStore('game', () => {
     }
   }
 
-  function chooseMostRecentSlotId(slots: GameSaveSlot[]) {
-    if (!slots.length) return null;
-    return slots.reduce((best, slot) => (slot.updatedAt > best.updatedAt ? slot : best), slots[0]).id;
+  function updateActiveSession(nextSession: GameSessionState) {
+    const activeId = activeSaveId.value;
+    if (!activeId) return false;
+    const idx = saveSlots.value.findIndex((slot) => slot.id === activeId);
+    if (idx < 0) {
+      activeSaveId.value = null;
+      persistSavesSnapshot();
+      return false;
+    }
+    const now = Date.now();
+    const nextSlots = [...saveSlots.value];
+    nextSlots[idx] = {
+      ...nextSlots[idx],
+      updatedAt: now,
+      state: nextSession
+    };
+    nextSlots.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    saveSlots.value = nextSlots;
+    persistSavesSnapshot();
+    return true;
   }
 
-  function createNewGameSlot() {
+  function updateActivePlayerState(state: GameState) {
+    const activeId = activeSaveId.value;
+    if (!activeId) return;
+    const idx = saveSlots.value.findIndex((slot) => slot.id === activeId);
+    if (idx < 0) {
+      activeSaveId.value = null;
+      persistSavesSnapshot();
+      return;
+    }
+
+    const slot = saveSlots.value[idx];
+    const currentSession = slot.state;
+    const playerIdx = clampIndex(currentSession.activePlayerIndex, currentSession.players.length, 0);
+    const players = [...currentSession.players];
+    const player = players[playerIdx];
+    if (!player) return;
+    players[playerIdx] = { ...player, state };
+    const nextSession: GameSessionState = { ...currentSession, activePlayerIndex: playerIdx, players };
+    updateActiveSession(nextSession);
+  }
+
+  watch(
+    engineState,
+    (state) => {
+      updateActivePlayerState(state);
+      syncDiceSnapshot();
+    },
+    { deep: true, immediate: true, flush: 'sync' }
+  );
+
+  function setServiceError(message: string | null) {
+    serviceError.value = message;
+  }
+
+  function clearError() {
+    lastError.value = null;
+  }
+
+  function createNewSessionSlot(setup: NewGameSetup) {
     clearError();
     if (saveSlots.value.length >= MAX_SAVE_SLOTS) {
       return { ok: false as const, reason: 'limit' as const };
     }
 
+    const normalizedPlayers = setup.players.slice(0, 4).map((p, idx) => {
+      const name = p.name?.trim() || `Player ${idx + 1}`;
+      const diceColor = toColorKey(p.appearance?.diceColor, fallbackAppearance.diceColor);
+      const heldColor = toColorKey(p.appearance?.heldColor, fallbackAppearance.heldColor);
+      return {
+        id: generateSaveId(),
+        name,
+        appearance: { diceColor, heldColor },
+        state: createFreshGameState()
+      } satisfies GameSessionPlayer;
+    });
+
+    if (!normalizedPlayers.length) {
+      lastError.value = 'At least one player is required.';
+      return { ok: false as const, reason: 'invalid' as const };
+    }
+
     const now = Date.now();
     const id = generateSaveId();
-    const state = engine.resetGame();
+    const firstState = engine.resetGame();
+    normalizedPlayers[0] = { ...normalizedPlayers[0], state: firstState };
+    const sessionState: GameSessionState = {
+      mode: setup.mode,
+      players: normalizedPlayers,
+      activePlayerIndex: 0
+    };
+
     activeSaveId.value = id;
     saveSlots.value = [
-      { id, createdAt: now, updatedAt: now, state },
+      { id, createdAt: now, updatedAt: now, state: sessionState },
       ...saveSlots.value
     ].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     persistSavesSnapshot();
-    engineState.value = state;
-    diceService.value?.startNewRound();
+    engineState.value = firstState;
+    hydrateDiceServiceFromState(firstState);
+    applyDiceThemeForPlayer(normalizedPlayers[0] ?? null);
     return { ok: true as const, id };
+  }
+
+  function createNewGameSlot() {
+    const name = buildDefaultPlayerNames(1)[0] || 'Player 1';
+    return createNewSessionSlot({
+      mode: 'solo',
+      players: [
+        {
+          name,
+          appearance: { ...fallbackAppearance }
+        }
+      ]
+    });
   }
 
   function loadGameSlot(id: string) {
@@ -323,14 +645,11 @@ export const useGameStore = defineStore('game', () => {
     activeSaveId.value = id;
     persistSavesSnapshot();
     try {
-      engine.hydrateState(slot.state);
-      setEngineState();
-      hydrateDiceServiceFromState(engineState.value);
+      return tryHydrateSlot(slot);
     } catch (err) {
       lastError.value = (err as Error).message;
       return false;
     }
-    return true;
   }
 
   function deleteGameSlot(id: string) {
@@ -370,7 +689,7 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function cleanupFinishedSaves() {
-    let remaining = saveSlots.value.filter((slot) => slot.state?.completed !== true);
+    let remaining = saveSlots.value.filter((slot) => !isSessionCompleted(slot.state));
     if (remaining.length === saveSlots.value.length) return false;
 
     const ordered = [...remaining].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -397,12 +716,51 @@ export const useGameStore = defineStore('game', () => {
     return true;
   }
 
-  function setServiceError(message: string | null) {
-    serviceError.value = message;
+  function setActivePlayerIndex(index: number) {
+    clearError();
+    const slot = activeSlot.value;
+    if (!slot) {
+      lastError.value = 'No active game.';
+      return false;
+    }
+    const sessionState = slot.state;
+    const nextIndex = clampIndex(index, sessionState.players.length, sessionState.activePlayerIndex);
+    const nextPlayer = sessionState.players[nextIndex];
+    if (!nextPlayer) return false;
+
+    const updated: GameSessionState = {
+      ...sessionState,
+      activePlayerIndex: nextIndex
+    };
+    updateActiveSession(updated);
+
+    try {
+      engine.hydrateState(nextPlayer.state);
+      setEngineState();
+      hydrateDiceServiceFromState(engineState.value);
+      applyDiceThemeForPlayer(nextPlayer);
+    } catch (err) {
+      lastError.value = (err as Error).message;
+      return false;
+    }
+
+    return true;
   }
 
-  function clearError() {
-    lastError.value = null;
+  function advanceToNextPlayer() {
+    clearError();
+    const current = session.value;
+    if (!current) {
+      lastError.value = 'No active game.';
+      return { ok: false as const };
+    }
+    const nextIndex = computeNextPlayerIndex(current);
+    if (nextIndex === null) {
+      lastError.value = 'No next player.';
+      return { ok: false as const };
+    }
+    const ok = setActivePlayerIndex(nextIndex);
+    return ok ? { ok: true as const, nextIndex } : { ok: false as const };
   }
 
   function syncEngineRoll(snapshot: DiceSnapshot) {
@@ -423,15 +781,6 @@ export const useGameStore = defineStore('game', () => {
         serviceError.value = (err as Error).message;
       }
     }
-  }
-
-  function handleServiceUpdate(raw: DiceServiceSnapshot) {
-    const mapped = snapshotFromService(raw);
-    serviceReady.value = true;
-    setServiceError(null);
-    syncEngineRoll(mapped);
-    syncEngineHolds(mapped);
-    syncDiceSnapshot(mapped.isRolling);
   }
 
   function syncEngineHolds(snapshot: DiceSnapshot) {
@@ -458,6 +807,15 @@ export const useGameStore = defineStore('game', () => {
     }
   }
 
+  function handleServiceUpdate(raw: DiceServiceSnapshot) {
+    const mapped = snapshotFromService(raw);
+    serviceReady.value = true;
+    setServiceError(null);
+    syncEngineRoll(mapped);
+    syncEngineHolds(mapped);
+    syncDiceSnapshot(mapped.isRolling);
+  }
+
   function attachDiceService(service: DiceServiceAdapter) {
     detachDiceService();
     diceService.value = service;
@@ -467,6 +825,7 @@ export const useGameStore = defineStore('game', () => {
     } catch (err) {
       serviceError.value = (err as Error).message;
     }
+    applyDiceThemeForPlayer(activePlayer.value);
     diceUnsub.value = service.onChange((snap) => handleServiceUpdate(snap));
   }
 
@@ -586,6 +945,21 @@ export const useGameStore = defineStore('game', () => {
     diceSnapshot,
     saveSlots,
     activeSaveId,
+    activeSlot,
+    session,
+    players,
+    activePlayer,
+    activePlayerIndex,
+    nextPlayer,
+    nextPlayerIndex,
+    leaderPlayer,
+    leaderIndex,
+    sessionCompleted,
+    isMultiplayer,
+    activeDiceColorHex,
+    activeHeldColorHex,
+    diceColorHexForKey: colorHexForKey,
+    heldColorHexForKeys: heldHexForKeys,
     maxSaveSlots: MAX_SAVE_SLOTS,
     serviceReady,
     serviceError,
@@ -601,11 +975,14 @@ export const useGameStore = defineStore('game', () => {
     handleServiceUpdate,
     setServiceError,
     // actions
+    createNewSessionSlot,
     createNewGameSlot,
     loadGameSlot,
     deleteGameSlot,
     quitActiveGame,
     cleanupFinishedSaves,
+    setActivePlayerIndex,
+    advanceToNextPlayer,
     rollAll,
     rerollUnheld,
     toggleHold,

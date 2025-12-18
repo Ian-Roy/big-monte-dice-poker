@@ -1,15 +1,21 @@
 <template>
   <div id="app-root" :class="{ 'orientation-locked': orientationLocked }">
-    <TitlePage
-      v-if="currentPage === 'title'"
-      :saves="savedGames"
-      :active-save-id="store.activeSaveId"
-      :max-saves="store.maxSaveSlots"
-      @resume="handleResumeGame"
-      @start="handleStartGame"
-      @delete="handleDeleteSavedGame"
-      @settings="navigateTo('settings')"
-    />
+    <template v-if="currentPage === 'title'">
+      <TitlePage
+        :saves="savedGames"
+        :active-save-id="store.activeSaveId"
+        :max-saves="store.maxSaveSlots"
+        @resume="handleResumeGame"
+        @create-game="openNewGameDialog"
+        @delete="handleDeleteSavedGame"
+        @settings="navigateTo('settings')"
+      />
+      <NewGameDialog
+        v-if="newGameDialogOpen"
+        @cancel="closeNewGameDialog"
+        @create="handleCreateGame"
+      />
+    </template>
     <SettingsPage
       v-else-if="currentPage === 'settings'"
       @back="navigateTo('title')"
@@ -37,6 +43,15 @@
       />
       <ToastStack :toasts="toasts" />
     </div>
+    <TurnHandoffOverlay
+      v-if="turnOverlayVisible"
+      :player-name="turnOverlayPlayerName"
+      :dice-color-hex="turnOverlayDiceColorHex"
+      :kicker="turnOverlayKicker"
+      :hint="turnOverlayHint"
+      :button-label="turnOverlayButtonLabel"
+      @primary="handleTurnOverlayPrimary"
+    />
     <div v-if="orientationLocked" class="orientation-overlay">
       <div class="orientation-overlay__card">
         <h3>Rotate your device</h3>
@@ -47,12 +62,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 import DiceServiceBridge from './components/DiceServiceBridge.vue';
 import AppBottomPanel from './components/layout/AppBottomPanel.vue';
 import AppTopControls from './components/layout/AppTopControls.vue';
 import ConfirmDialog from './components/ui/ConfirmDialog.vue';
+import NewGameDialog from './components/ui/NewGameDialog.vue';
+import TurnHandoffOverlay from './components/ui/TurnHandoffOverlay.vue';
 import ToastStack from './components/ui/ToastStack.vue';
 import SettingsPage from './pages/SettingsPage.vue';
 import TitlePage from './pages/TitlePage.vue';
@@ -60,7 +77,7 @@ import { useOrientationLock } from './composables/useOrientationLock';
 import { useToasts } from './composables/useToasts';
 import type { CategoryKey } from './game/engine';
 import type { ActiveLayer } from './shared/appUi';
-import { useGameStore } from './stores/gameStore';
+import { useGameStore, type NewGameSetup } from './stores/gameStore';
 
 // Initialize the store now so upcoming Vue components can subscribe to state.
 const store = useGameStore();
@@ -69,11 +86,50 @@ store.cleanupFinishedSaves();
 const { orientationLocked } = useOrientationLock({ maxMobileWidth: 900 });
 const currentPage = ref<'title' | 'settings' | 'game'>('title');
 const activeLayer = ref<ActiveLayer>('dice');
+const newGameDialogOpen = ref(false);
+const turnOverlay = ref<null | { mode: 'current' | 'next' }>(null);
 const diceVisibility = computed<'visible' | 'hidden'>(() => {
   if (orientationLocked.value) return 'hidden';
   return activeLayer.value === 'dice' ? 'visible' : 'hidden';
 });
 const bodyScrollLocked = computed(() => currentPage.value === 'game' && !orientationLocked.value);
+
+const turnOverlayPlayer = computed(() => {
+  if (!turnOverlay.value) return null;
+  return turnOverlay.value.mode === 'next' ? store.nextPlayer : store.activePlayer;
+});
+
+const turnOverlayVisible = computed(
+  () => currentPage.value === 'game' && !!turnOverlay.value && !!turnOverlayPlayer.value
+);
+
+const turnOverlayPlayerName = computed(() => turnOverlayPlayer.value?.name ?? '');
+
+const turnOverlayDiceColorHex = computed(() => {
+  const player = turnOverlayPlayer.value;
+  if (!player) return store.activeDiceColorHex;
+  return store.diceColorHexForKey(player.appearance.diceColor);
+});
+
+const turnOverlayKicker = computed(() => {
+  const overlay = turnOverlay.value;
+  if (!overlay) return '';
+  return overlay.mode === 'next' ? 'Next player' : 'Your turn';
+});
+
+const turnOverlayHint = computed(() => {
+  const overlay = turnOverlay.value;
+  if (!overlay) return '';
+  if (overlay.mode === 'next') return 'Pass the phone, then tap roll when you are ready.';
+  return store.rollsThisRound > 0 ? 'Tap continue to return to your turn.' : 'Tap roll to start your turn.';
+});
+
+const turnOverlayButtonLabel = computed(() => {
+  const overlay = turnOverlay.value;
+  if (!overlay) return 'Roll';
+  if (overlay.mode === 'next') return 'Roll';
+  return store.rollsThisRound > 0 ? 'Continue' : 'Roll';
+});
 
 type ConfirmDialogState =
   | { type: 'score'; category: CategoryKey }
@@ -107,18 +163,33 @@ const dialogMessage = computed(() => {
 
 const savedGames = computed(() =>
   store.saveSlots.map((slot) => {
-    const state = slot.state;
-    const scorable = Array.isArray(state.categories)
-      ? state.categories.filter((cat) => cat.interactive !== false)
+    const session = slot.state;
+    const players = Array.isArray(session.players) ? session.players : [];
+    const activeIdx = typeof session.activePlayerIndex === 'number' ? session.activePlayerIndex : 0;
+    const activePlayer = players[activeIdx] ?? players[0] ?? null;
+    const activeState = activePlayer?.state;
+
+    const scorable = Array.isArray(activeState?.categories)
+      ? activeState.categories.filter((cat) => cat.interactive !== false)
       : [];
     const scoredCount = scorable.filter((cat) => cat.scored).length;
+
+    const leader = players.reduce((best, candidate) => {
+      const bestScore = best?.state?.totals?.grand ?? 0;
+      const nextScore = candidate?.state?.totals?.grand ?? 0;
+      return nextScore > bestScore ? candidate : best;
+    }, players[0] ?? null);
+
     return {
       id: slot.id,
-      round: state.currentRound ?? 1,
-      maxRounds: state.maxRounds ?? 0,
+      playersCount: players.length || 1,
+      leaderName: leader?.name ?? '—',
+      activePlayerName: activePlayer?.name ?? '—',
+      round: activeState?.currentRound ?? 1,
+      maxRounds: activeState?.maxRounds ?? 0,
       scoredCount,
       totalScorable: scorable.length,
-      score: state.totals?.grand ?? 0
+      score: leader?.state?.totals?.grand ?? 0
     };
   })
 );
@@ -126,8 +197,33 @@ const savedGames = computed(() =>
 function navigateTo(page: typeof currentPage.value) {
   if (page === 'title') {
     store.cleanupFinishedSaves();
+    newGameDialogOpen.value = false;
+    turnOverlay.value = null;
   }
   currentPage.value = page;
+}
+
+function openNewGameDialog() {
+  newGameDialogOpen.value = true;
+}
+
+function closeNewGameDialog() {
+  newGameDialogOpen.value = false;
+}
+
+function handleCreateGame(setup: NewGameSetup) {
+  store.cleanupFinishedSaves();
+  const result = store.createNewSessionSlot(setup);
+  if (!result.ok) {
+    pushToast('You already have 4 saved games. Delete or finish one to create another.');
+    return;
+  }
+  closeNewGameDialog();
+  setActiveLayer('dice');
+  currentPage.value = 'game';
+  if (store.isMultiplayer && !store.sessionCompleted) {
+    turnOverlay.value = { mode: 'current' };
+  }
 }
 
 function handleSelect(key: CategoryKey) {
@@ -157,6 +253,11 @@ function confirmDialogConfirm() {
   const cat = store.categories.find((c) => c.key === dialog.category);
   pushToast(cat ? `${cat.label} scored` : 'Scored');
   confirmDialog.value = null;
+
+  if (store.isMultiplayer && !store.sessionCompleted && store.nextPlayer) {
+    setActiveLayer('dice');
+    turnOverlay.value = { mode: 'next' };
+  }
 }
 
 function setActiveLayer(layer: ActiveLayer) {
@@ -174,18 +275,10 @@ function handleResumeGame(id: string) {
     return;
   }
   currentPage.value = 'game';
-  setActiveLayer(store.engineState.completed ? 'summary' : 'dice');
-}
-
-function handleStartGame() {
-  store.cleanupFinishedSaves();
-  const result = store.createNewGameSlot();
-  if (!result.ok) {
-    pushToast('You already have 4 saved games. Delete or finish one to start a new game.');
-    return;
+  setActiveLayer(store.sessionCompleted ? 'summary' : 'dice');
+  if (store.isMultiplayer && !store.sessionCompleted) {
+    turnOverlay.value = { mode: 'current' };
   }
-  setActiveLayer('dice');
-  currentPage.value = 'game';
 }
 
 function handleDeleteSavedGame(id: string) {
@@ -197,8 +290,36 @@ function handleBackToTitle() {
 }
 
 function handleQuitGameRequest() {
-  if (store.engineState.completed) return;
+  if (store.sessionCompleted) return;
   confirmDialog.value = { type: 'quit' };
+}
+
+async function handleTurnOverlayPrimary() {
+  const overlay = turnOverlay.value;
+  if (!overlay) return;
+
+  const switchedPlayer = overlay.mode === 'next';
+  if (overlay.mode === 'next') {
+    const result = store.advanceToNextPlayer();
+    if (!result.ok) {
+      pushToast('Could not advance to the next player.');
+      turnOverlay.value = null;
+      return;
+    }
+  }
+
+  turnOverlay.value = null;
+  showDice();
+
+  if (store.rollsThisRound === 0) {
+    if (switchedPlayer) {
+      await nextTick();
+      if (typeof window !== 'undefined') {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+    }
+    await store.rollAll();
+  }
 }
 
 onBeforeUnmount(() => {
@@ -237,10 +358,11 @@ watch(
 );
 
 watch(
-  () => store.engineState.completed,
+  () => store.sessionCompleted,
   (complete) => {
     if (!complete) return;
     if (currentPage.value !== 'game') return;
+    turnOverlay.value = null;
     setActiveLayer('summary');
   }
 );

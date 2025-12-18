@@ -114,7 +114,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .dropdown-select {
   position: relative;
-  flex: 1 1 160px;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
 }
@@ -215,4 +215,3 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 </style>
-

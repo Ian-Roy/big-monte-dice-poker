@@ -47,6 +47,7 @@ Local-only helpers:
 ## Docs
 
 - `docs/ui-overview.md` – UI mental model + layout/responsiveness notes (start here).
+- `docs/pass-and-play.md` – Pass-the-phone multiplayer notes.
 - `docs/working-with-dice-box.md` – Debugging and working with the 3D dice integration.
 - `docs/dice-box-fork.md` – Notes about the local Dice Box fork.
 

@@ -13,8 +13,8 @@ const settings = useSettingsStore();
 let recovering = false;
 
 const configSnapshot = () => ({
-  diceColor: settings.diceColorHex,
-  heldColor: settings.heldColorHex,
+  diceColor: store.activeDiceColorHex,
+  heldColor: store.activeHeldColorHex,
   physics: { ...settings.physics }
 });
 

@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 
 import type { DiceServiceSnapshot } from '../shared/DiceService';
 import { useGameStore, type DiceServiceAdapter } from './gameStore';
+import { DICE_COLOR_PRESETS } from './settingsStore';
 
 type StubService = DiceServiceAdapter & {
   emit: (snapshot: DiceServiceSnapshot) => void;
@@ -11,6 +12,7 @@ type StubService = DiceServiceAdapter & {
     rerollCalls: number;
     rollIndicesCalls: number;
     hydrateCalls: number;
+    updateConfigCalls: Array<{ diceColor?: string; heldColor?: string }>;
     toggleCalls: number[];
     startCalls: number;
   };
@@ -52,6 +54,7 @@ function createStubService(initial: DiceServiceSnapshot = baseSnapshot): StubSer
     rerollCalls: 0,
     rollIndicesCalls: 0,
     hydrateCalls: 0,
+    updateConfigCalls: [] as Array<{ diceColor?: string; heldColor?: string }>,
     toggleCalls: [] as number[],
     startCalls: 0
   };
@@ -83,6 +86,9 @@ function createStubService(initial: DiceServiceSnapshot = baseSnapshot): StubSer
     },
     hydrateRoundState(_state: { values: Array<number | null>; holds: Array<boolean>; rollsThisRound: number }) {
       record.hydrateCalls += 1;
+    },
+    updateConfig(config: { diceColor?: string; heldColor?: string }) {
+      record.updateConfigCalls.push({ diceColor: config.diceColor, heldColor: config.heldColor });
     },
     toggleHold(index: number) {
       record.toggleCalls.push(index);
@@ -161,7 +167,8 @@ describe('useGameStore', () => {
     for (let idx = 0; idx < 4; idx += 1) {
       const result = store.createNewGameSlot();
       expect(result.ok).toBe(true);
-      expect(typeof store.activeSaveId).toBe('string');
+      if (!result.ok) throw new Error('Expected slot create to succeed');
+      expect(typeof result.id).toBe('string');
     }
 
     expect(store.saveSlots.length).toBe(4);
@@ -174,7 +181,8 @@ describe('useGameStore', () => {
 
     const first = store.createNewGameSlot();
     expect(first.ok).toBe(true);
-    const firstId = store.activeSaveId;
+    if (!first.ok) throw new Error('Expected slot create to succeed');
+    const firstId = first.id;
 
     store.attachDiceService(stub);
     stub.emit(snapshotFor([1, 2, 3, 4, 5], 1));
@@ -194,7 +202,8 @@ describe('useGameStore', () => {
     const store = useGameStore();
     const result = store.createNewGameSlot();
     expect(result.ok).toBe(true);
-    const activeId = store.activeSaveId;
+    if (!result.ok) throw new Error('Expected slot create to succeed');
+    const activeId = result.id;
 
     expect(store.quitActiveGame()).toBe(true);
     expect(store.saveSlots.some((slot) => slot.id === activeId)).toBe(false);
@@ -206,8 +215,36 @@ describe('useGameStore', () => {
     expect(result.ok).toBe(true);
     expect(store.saveSlots.length).toBe(1);
 
-    store.saveSlots[0].state.completed = true;
+    store.saveSlots[0].state.players[0].state.completed = true;
     expect(store.cleanupFinishedSaves()).toBe(true);
     expect(store.saveSlots.length).toBe(0);
+  });
+
+  it('supports pass-and-play sessions with per-player colors and turn switching', () => {
+    const store = useGameStore();
+    const stub = createStubService();
+
+    const created = store.createNewSessionSlot({
+      mode: 'pass-and-play',
+      players: [
+        { name: 'Player A', appearance: { diceColor: 'red', heldColor: 'blue' } },
+        { name: 'Player B', appearance: { diceColor: 'purple', heldColor: 'slate' } }
+      ]
+    });
+    expect(created.ok).toBe(true);
+
+    store.attachDiceService(stub);
+    stub.emit(snapshotFor([1, 2, 3, 4, 5], 1));
+    store.scoreCategory('chance');
+
+    expect(store.saveSlots[0].state.players[0].state.totals.grand).toBe(15);
+    expect(store.activeDiceColorHex).toBe(DICE_COLOR_PRESETS.red.hex);
+    expect(stub.record.updateConfigCalls.some((call) => call.diceColor === DICE_COLOR_PRESETS.red.hex)).toBe(true);
+
+    const advanced = store.advanceToNextPlayer();
+    expect(advanced.ok).toBe(true);
+    expect(store.activeDiceColorHex).toBe(DICE_COLOR_PRESETS.purple.hex);
+    expect(store.engineState.totals.grand).toBe(0);
+    expect(stub.record.updateConfigCalls.some((call) => call.diceColor === DICE_COLOR_PRESETS.purple.hex)).toBe(true);
   });
 });
