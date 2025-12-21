@@ -13,6 +13,43 @@
       </header>
 
       <section class="settings-section">
+        <h3>Player</h3>
+        <div class="settings-grid">
+          <div class="setting-row">
+            <div class="setting-text">
+              <div class="setting-label">Preferred username</div>
+              <div class="setting-help">
+                Used as Player 1 when starting new games. Leave blank to keep using random casino names.
+              </div>
+            </div>
+            <div class="setting-controls setting-controls--name">
+              <input
+                v-model="store.preferredUsername"
+                class="text-input"
+                type="text"
+                autocomplete="nickname"
+                maxlength="24"
+                placeholder="(random)"
+              />
+              <button
+                type="button"
+                class="icon-button"
+                aria-label="Randomize preferred username"
+                @click="randomizePreferredUsername"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5Zm0 2h14v14H5V5Zm3.5 3.5a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5Zm7 0a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5ZM8.5 13a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5Zm7 0a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5ZM12 10.75a1.25 1.25 0 1 1 0 2.5a1.25 1.25 0 0 1 0-2.5Z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
         <h3>Dice Appearance</h3>
         <div class="settings-grid">
           <div class="setting-row">
@@ -166,6 +203,7 @@
 import { computed } from 'vue';
 
 import DropdownSelect, { type DropdownOption } from '../components/ui/DropdownSelect.vue';
+import { pickRandomCasinoName } from '../shared/casinoNames';
 import { ensureBrighterThanHex } from '../shared/color';
 import { DICE_COLOR_OPTIONS, useSettingsStore } from '../stores/settingsStore';
 
@@ -186,6 +224,12 @@ const heldColorOptions = computed<DropdownOption[]>(() =>
     swatch: ensureBrighterThanHex(opt.hex, store.diceColorHex, 0.1)
   }))
 );
+
+function randomizePreferredUsername() {
+  const current = store.preferredUsername.trim();
+  const exclude = current ? new Set<string>([current]) : undefined;
+  store.preferredUsername = pickRandomCasinoName({ exclude });
+}
 
 defineEmits<{
   (event: 'back'): void;
@@ -295,6 +339,44 @@ defineEmits<{
   flex-wrap: wrap;
 }
 
+.setting-controls--name {
+  flex-wrap: nowrap;
+}
+
+.setting-controls--name .text-input {
+  flex: 1;
+  width: auto;
+  max-width: 360px;
+}
+
+.icon-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  flex: 0 0 auto;
+}
+
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  outline: none;
+  border-color: rgba(146, 227, 255, 0.65);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
 .setting-controls--range input[type='range'] {
   flex: 1;
   min-width: 160px;
@@ -309,6 +391,24 @@ defineEmits<{
   font-size: 14px;
   box-sizing: border-box;
   width: 110px;
+}
+
+.text-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  box-sizing: border-box;
+  width: min(340px, 100%);
+}
+
+.text-input:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(146, 227, 255, 0.6);
+  border-color: rgba(146, 227, 255, 0.65);
 }
 
 .settings-footer {

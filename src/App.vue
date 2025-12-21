@@ -5,10 +5,13 @@
         :saves="savedGames"
         :active-save-id="store.activeSaveId"
         :max-saves="store.maxSaveSlots"
+        :high-score="leaderboard.topScore"
+        :has-high-score="leaderboard.entries.length > 0"
         @resume="handleResumeGame"
         @create-game="openNewGameDialog"
         @delete="handleDeleteSavedGame"
         @settings="navigateTo('settings')"
+        @leaderboard="openLeaderboard"
       />
       <NewGameDialog
         v-if="newGameDialogOpen"
@@ -19,6 +22,16 @@
     <SettingsPage
       v-else-if="currentPage === 'settings'"
       @back="navigateTo('title')"
+    />
+    <LeaderboardPage
+      v-else-if="currentPage === 'leaderboard'"
+      @back="navigateTo('title')"
+      @open-summary="openLeaderboardSummary"
+    />
+    <LeaderboardSummaryPage
+      v-else-if="currentPage === 'leaderboard-summary'"
+      :entry-id="leaderboardEntryId"
+      @back="navigateTo('leaderboard')"
     />
     <div v-else id="app-shell">
       <AppTopControls
@@ -52,6 +65,12 @@
       :button-label="turnOverlayButtonLabel"
       @primary="handleTurnOverlayPrimary"
     />
+    <HighScoreNameDialog
+      v-if="highScorePrompt"
+      :score="highScorePrompt.score"
+      :initial-name="highScorePrompt.leaderName"
+      @save="handleHighScoreNameSave"
+    />
     <div v-if="orientationLocked" class="orientation-overlay">
       <div class="orientation-overlay__card">
         <h3>Rotate your device</h3>
@@ -68,26 +87,47 @@ import DiceServiceBridge from './components/DiceServiceBridge.vue';
 import AppBottomPanel from './components/layout/AppBottomPanel.vue';
 import AppTopControls from './components/layout/AppTopControls.vue';
 import ConfirmDialog from './components/ui/ConfirmDialog.vue';
+import HighScoreNameDialog from './components/ui/HighScoreNameDialog.vue';
 import NewGameDialog from './components/ui/NewGameDialog.vue';
 import TurnHandoffOverlay from './components/ui/TurnHandoffOverlay.vue';
 import ToastStack from './components/ui/ToastStack.vue';
 import SettingsPage from './pages/SettingsPage.vue';
+import LeaderboardPage from './pages/LeaderboardPage.vue';
+import LeaderboardSummaryPage from './pages/LeaderboardSummaryPage.vue';
 import TitlePage from './pages/TitlePage.vue';
 import { useOrientationLock } from './composables/useOrientationLock';
 import { useToasts } from './composables/useToasts';
 import type { CategoryKey } from './game/engine';
 import type { ActiveLayer } from './shared/appUi';
+import { isSessionCompleted } from './shared/gameSession';
 import { useGameStore, type NewGameSetup } from './stores/gameStore';
+import { useLeaderboardStore } from './stores/leaderboardStore';
 
 // Initialize the store now so upcoming Vue components can subscribe to state.
 const store = useGameStore();
+const leaderboard = useLeaderboardStore();
+
+function recordFinishedSaves() {
+  store.saveSlots.forEach((slot) => {
+    if (!isSessionCompleted(slot.state)) return;
+    try {
+      leaderboard.recordCompletedSession({ id: slot.id, session: slot.state });
+    } catch (err) {
+      console.warn('[App] failed to record finished save to leaderboard', err);
+    }
+  });
+}
+
+recordFinishedSaves();
 store.cleanupFinishedSaves();
 
 const { orientationLocked } = useOrientationLock({ maxMobileWidth: 900 });
-const currentPage = ref<'title' | 'settings' | 'game'>('title');
+const currentPage = ref<'title' | 'settings' | 'leaderboard' | 'leaderboard-summary' | 'game'>('title');
 const activeLayer = ref<ActiveLayer>('dice');
 const newGameDialogOpen = ref(false);
 const turnOverlay = ref<null | { mode: 'current' | 'next' }>(null);
+const highScorePrompt = ref<null | { entryId: string; leaderPlayerId: string; score: number; leaderName: string }>(null);
+const leaderboardEntryId = ref<string | null>(null);
 const diceVisibility = computed<'visible' | 'hidden'>(() => {
   if (orientationLocked.value) return 'hidden';
   return activeLayer.value === 'dice' ? 'visible' : 'hidden';
@@ -196,9 +236,11 @@ const savedGames = computed(() =>
 
 function navigateTo(page: typeof currentPage.value) {
   if (page === 'title') {
+    recordFinishedSaves();
     store.cleanupFinishedSaves();
     newGameDialogOpen.value = false;
     turnOverlay.value = null;
+    highScorePrompt.value = null;
   }
   currentPage.value = page;
 }
@@ -285,6 +327,16 @@ function handleDeleteSavedGame(id: string) {
   store.deleteGameSlot(id);
 }
 
+function openLeaderboard() {
+  leaderboardEntryId.value = null;
+  navigateTo('leaderboard');
+}
+
+function openLeaderboardSummary(entryId: string) {
+  leaderboardEntryId.value = entryId;
+  navigateTo('leaderboard-summary');
+}
+
 function handleBackToTitle() {
   navigateTo('title');
 }
@@ -292,6 +344,16 @@ function handleBackToTitle() {
 function handleQuitGameRequest() {
   if (store.sessionCompleted) return;
   confirmDialog.value = { type: 'quit' };
+}
+
+function handleHighScoreNameSave(nextName: string) {
+  const prompt = highScorePrompt.value;
+  if (!prompt) return;
+  const trimmed = nextName.trim();
+  if (!trimmed) return;
+  leaderboard.renameLeader(prompt.entryId, trimmed);
+  store.renamePlayer(prompt.leaderPlayerId, trimmed);
+  highScorePrompt.value = null;
 }
 
 async function handleTurnOverlayPrimary() {
@@ -364,6 +426,28 @@ watch(
     if (currentPage.value !== 'game') return;
     turnOverlay.value = null;
     setActiveLayer('summary');
+
+    const session = store.session;
+    const slot = store.activeSlot;
+    if (!session || !slot) return;
+    const previousHigh = leaderboard.topScore;
+    let recorded: ReturnType<typeof leaderboard.recordCompletedSession>;
+    try {
+      recorded = leaderboard.recordCompletedSession({ id: slot.id, session });
+    } catch (err) {
+      console.warn('[App] failed to record completed session to leaderboard', err);
+      pushToast('Could not record high score.');
+      return;
+    }
+    if (!recorded.ok) return;
+    if (!recorded.isNew) return;
+    if (recorded.entry.leaderScore <= previousHigh) return;
+    highScorePrompt.value = {
+      entryId: recorded.entry.id,
+      leaderPlayerId: recorded.entry.leaderPlayerId,
+      score: recorded.entry.leaderScore,
+      leaderName: recorded.entry.leaderName
+    };
   }
 );
 </script>

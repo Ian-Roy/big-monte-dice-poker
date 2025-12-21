@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 import { ensureBrighterThanHex } from '../shared/color';
 
@@ -21,6 +21,7 @@ export type DiceAppearanceSettings = {
 };
 
 export type AppSettingsState = {
+  preferredUsername: string;
   appearance: DiceAppearanceSettings;
   physics: DicePhysicsSettings;
 };
@@ -29,6 +30,7 @@ const SETTINGS_STORAGE_KEY = 'big-monte:settings';
 const SETTINGS_STORAGE_VERSION = 1;
 
 const DEFAULT_SETTINGS: AppSettingsState = {
+  preferredUsername: '',
   appearance: {
     diceColor: 'blue',
     heldColor: 'blue'
@@ -100,7 +102,15 @@ function toColorKey(value: unknown, fallback: DiceColorKey): DiceColorKey {
   return COLOR_KEYS.has(asKey) ? asKey : fallback;
 }
 
+function sanitizePreferredUsername(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, 24);
+}
+
 function sanitizeState(input: AppSettingsState): AppSettingsState {
+  const preferredUsername = sanitizePreferredUsername((input as Partial<AppSettingsState>)?.preferredUsername);
   const appearance = input?.appearance ?? DEFAULT_SETTINGS.appearance;
   const physics = input?.physics ?? DEFAULT_SETTINGS.physics;
 
@@ -108,6 +118,7 @@ function sanitizeState(input: AppSettingsState): AppSettingsState {
   const heldColor = toColorKey(appearance.heldColor, DEFAULT_SETTINGS.appearance.heldColor);
 
   return {
+    preferredUsername,
     appearance: { diceColor, heldColor },
     physics: {
       throwForce: clamp(toNumber(physics.throwForce, DEFAULT_SETTINGS.physics.throwForce), 0, 12),
@@ -175,6 +186,7 @@ function persistSettings(state: AppSettingsState) {
 
 export const useSettingsStore = defineStore('settings', () => {
   const initial = loadPersistedSettings() ?? DEFAULT_SETTINGS;
+  const preferredUsername = ref(initial.preferredUsername);
   const appearance = reactive({ ...initial.appearance });
   const physics = reactive({ ...initial.physics });
 
@@ -189,17 +201,19 @@ export const useSettingsStore = defineStore('settings', () => {
   });
 
   watch(
-    () => ({ appearance: { ...appearance }, physics: { ...physics } }),
+    () => ({ preferredUsername: preferredUsername.value, appearance: { ...appearance }, physics: { ...physics } }),
     (next) => persistSettings(next),
     { deep: true }
   );
 
   function resetToDefaults() {
+    preferredUsername.value = DEFAULT_SETTINGS.preferredUsername;
     Object.assign(appearance, DEFAULT_SETTINGS.appearance);
     Object.assign(physics, DEFAULT_SETTINGS.physics);
   }
 
   return {
+    preferredUsername,
     appearance,
     physics,
     diceColorHex,

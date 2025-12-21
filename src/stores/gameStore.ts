@@ -583,8 +583,11 @@ export const useGameStore = defineStore('game', () => {
       return { ok: false as const, reason: 'limit' as const };
     }
 
+    const preferredUsername = settings.preferredUsername.trim();
     const normalizedPlayers = setup.players.slice(0, 4).map((p, idx) => {
-      const name = p.name?.trim() || `Player ${idx + 1}`;
+      let name = p.name?.trim() ?? '';
+      if (!name && idx === 0 && preferredUsername) name = preferredUsername;
+      if (!name) name = `Player ${idx + 1}`;
       const diceColor = toColorKey(p.appearance?.diceColor, fallbackAppearance.diceColor);
       const heldColor = toColorKey(p.appearance?.heldColor, fallbackAppearance.heldColor);
       return {
@@ -623,7 +626,8 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function createNewGameSlot() {
-    const name = buildDefaultPlayerNames(1)[0] || 'Player 1';
+    const preferredUsername = settings.preferredUsername.trim();
+    const name = preferredUsername || buildDefaultPlayerNames(1)[0] || 'Player 1';
     return createNewSessionSlot({
       mode: 'solo',
       players: [
@@ -745,6 +749,35 @@ export const useGameStore = defineStore('game', () => {
     }
 
     return true;
+  }
+
+  function renamePlayer(playerId: string, nextName: string) {
+    clearError();
+    const slot = activeSlot.value;
+    if (!slot) {
+      lastError.value = 'No active game.';
+      return false;
+    }
+
+    const trimmed = nextName.trim();
+    if (!trimmed) {
+      lastError.value = 'Player name cannot be empty.';
+      return false;
+    }
+
+    const sessionState = slot.state;
+    const playerIdx = sessionState.players.findIndex((player) => player.id === playerId);
+    if (playerIdx < 0) {
+      lastError.value = 'Player not found.';
+      return false;
+    }
+
+    const players = [...sessionState.players];
+    const player = players[playerIdx];
+    if (!player) return false;
+    players[playerIdx] = { ...player, name: trimmed };
+    const updated: GameSessionState = { ...sessionState, players };
+    return updateActiveSession(updated);
   }
 
   function advanceToNextPlayer() {
@@ -982,6 +1015,7 @@ export const useGameStore = defineStore('game', () => {
     quitActiveGame,
     cleanupFinishedSaves,
     setActivePlayerIndex,
+    renamePlayer,
     advanceToNextPlayer,
     rollAll,
     rerollUnheld,

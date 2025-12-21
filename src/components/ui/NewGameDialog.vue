@@ -78,7 +78,7 @@
 import { computed, ref, watch } from 'vue';
 
 import DropdownSelect, { type DropdownOption } from './DropdownSelect.vue';
-import { buildDefaultPlayerNames, pickRandomCasinoName } from '../../shared/casinoNames';
+import { pickRandomCasinoName } from '../../shared/casinoNames';
 import { ensureBrighterThanHex } from '../../shared/color';
 import { DICE_COLOR_OPTIONS, DICE_COLOR_PRESETS, type DiceColorKey, useSettingsStore } from '../../stores/settingsStore';
 import type { NewGameSetup } from '../../stores/gameStore';
@@ -115,6 +115,27 @@ const playerCountValue = ref('1');
 const players = ref<PlayerForm[]>([]);
 
 const orderedColorKeys = computed(() => DICE_COLOR_OPTIONS.map((opt) => opt.key));
+const preferredUsername = computed(() => settings.preferredUsername.trim());
+
+function buildDefaultNames(count: number) {
+  const clamped = Math.max(1, Math.min(4, Math.floor(count)));
+  const preferred = preferredUsername.value;
+  const exclude = new Set<string>();
+  const names: string[] = [];
+
+  if (preferred) {
+    exclude.add(preferred);
+    names.push(preferred);
+  }
+
+  for (let idx = names.length; idx < clamped; idx += 1) {
+    const next = pickRandomCasinoName({ exclude });
+    exclude.add(next);
+    names.push(next);
+  }
+
+  return names;
+}
 
 function rotatedDiceKeys(count: number, first: DiceColorKey): DiceColorKey[] {
   const list = orderedColorKeys.value;
@@ -176,7 +197,7 @@ function bestHeldKeys({
 
 function buildDefaults(count: number): PlayerForm[] {
   const clamped = Math.max(1, Math.min(4, Math.floor(count)));
-  const names = buildDefaultPlayerNames(clamped);
+  const names = buildDefaultNames(clamped);
   const diceKeys = rotatedDiceKeys(clamped, settings.appearance.diceColor);
   const heldKeys =
     clamped > 1
@@ -204,9 +225,10 @@ function heldColorOptionsFor(diceColor: DiceColorKey): DropdownOption[] {
 
 function syncPlayersToCount(nextCount: number) {
   const current = players.value;
+  const preferred = preferredUsername.value;
   const defaults = buildDefaults(nextCount);
   players.value = defaults.map((def, idx) => ({
-    name: current[idx]?.name ?? def.name,
+    name: idx === 0 && preferred ? current[idx]?.name?.trim() || preferred : current[idx]?.name ?? def.name,
     diceColor: current[idx]?.diceColor ?? def.diceColor,
     heldColor: current[idx]?.heldColor ?? def.heldColor
   }));
@@ -223,7 +245,7 @@ watch(
 
 function randomizeNames() {
   const count = players.value.length;
-  const fresh = buildDefaultPlayerNames(count);
+  const fresh = buildDefaultNames(count);
   players.value = players.value.map((p, idx) => ({
     ...p,
     name: fresh[idx] ?? p.name
@@ -231,9 +253,11 @@ function randomizeNames() {
 }
 
 function createGame() {
+  const preferred = preferredUsername.value;
   const exclude = new Set<string>();
   const normalized = players.value.map((p, idx) => {
-    const name = p.name.trim();
+    let name = p.name.trim();
+    if (!name && idx === 0 && preferred) name = preferred;
     if (name) exclude.add(name);
     return {
       name,

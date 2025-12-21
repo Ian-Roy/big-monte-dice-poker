@@ -10,6 +10,23 @@
 
       <p class="title-tagline">Shake the dice, chase straights, and ride the upper bonus to victory.</p>
 
+      <section class="high-score-section" aria-label="High score">
+        <button type="button" class="high-score-card" @click="$emit('leaderboard')">
+          <span class="high-score-card__label">High score</span>
+          <span class="high-score-card__value">
+            {{ hasHighScore ? highScore.toLocaleString() : '—' }}
+          </span>
+          <span class="high-score-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                d="M9.29 6.71a1 1 0 0 1 1.42 0l5 5a1 1 0 0 1 0 1.42l-5 5a1 1 0 1 1-1.42-1.42L13.59 12 9.29 7.71a1 1 0 0 1 0-1.42Z"
+              />
+            </svg>
+          </span>
+        </button>
+      </section>
+
       <section class="save-section" aria-label="Saved games">
         <header class="save-section__header">
           <p class="section-label">Saved games</p>
@@ -117,6 +134,8 @@ defineProps<{
   saves: SavedGameSummary[];
   activeSaveId: string | null;
   maxSaves: number;
+  highScore: number;
+  hasHighScore: boolean;
 }>();
 
 const { canInstallPwa, updateAvailable } = usePwaState();
@@ -166,6 +185,7 @@ defineEmits<{
   (event: 'create-game'): void;
   (event: 'delete', id: string): void;
   (event: 'settings'): void;
+  (event: 'leaderboard'): void;
 }>();
 </script>
 
@@ -218,6 +238,71 @@ defineEmits<{
 .title-tagline {
   margin: 10px 0 18px;
   color: rgba(255, 255, 255, 0.85);
+}
+
+.high-score-section {
+  margin: 0 0 18px;
+  display: flex;
+  justify-content: center;
+}
+
+.high-score-card {
+  width: 100%;
+  border-radius: 18px;
+  padding: 14px 14px;
+  background: rgba(8, 20, 36, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "label icon"
+    "value icon";
+  align-items: center;
+  gap: 6px 10px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.high-score-card:hover,
+.high-score-card:focus-visible {
+  border-color: rgba(146, 227, 255, 0.45);
+  background: rgba(10, 28, 48, 0.92);
+  outline: none;
+}
+
+.high-score-card__label {
+  grid-area: label;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(146, 227, 255, 0.8);
+}
+
+.high-score-card__value {
+  grid-area: value;
+  font-size: 22px;
+  font-weight: 800;
+  color: #ffc857;
+  font-variant-numeric: tabular-nums;
+}
+
+.high-score-card__icon {
+  grid-area: icon;
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  display: grid;
+  place-items: center;
+}
+
+.high-score-card__icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .save-section {
