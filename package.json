@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "ts-node --esm --transpile-only tools/gen-assets.ts && vite build",
+    "build": "vite build",
     "build:ci": "vite build",
     "gen:assets": "ts-node --esm --transpile-only tools/gen-assets.ts",
     "gen:dice-sprites": "ts-node --esm --transpile-only tools/bake-dice-sprites.ts",

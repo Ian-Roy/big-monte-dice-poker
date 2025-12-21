@@ -74,7 +74,7 @@
     <div v-if="orientationLocked" class="orientation-overlay">
       <div class="orientation-overlay__card">
         <h3>Rotate your device</h3>
-        <p>Big Monte Dice Poker only plays in portrait on mobile. Turn your device upright to keep rolling.</p>
+        <p>Monte's Delux Dice Poker only plays in portrait on mobile. Turn your device upright to keep rolling.</p>
       </div>
     </div>
   </div>

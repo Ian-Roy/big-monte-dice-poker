@@ -1,4 +1,4 @@
-# Working With Dice-Box (Big Monte Dice Poker)
+# Working With Dice-Box (Monte's Delux Dice Poker)
 
 Practical notes for integrating and operating `@3d-dice/dice-box` in this project, including asset layout, DiceService wiring, sprite baking for 2D UI parity, and troubleshooting tips.
 

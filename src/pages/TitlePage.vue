@@ -1,14 +1,25 @@
 <template>
-  <div class="title-page" aria-label="Big Monte Dice Poker title screen">
+  <div class="title-page" aria-label="Monte's Delux Dice Poker title screen">
     <div class="title-card">
       <div class="title-card__header">
-        <div>
-          <p class="title-kicker">Big Monte presents</p>
-          <h1>Big Monte Dice Poker</h1>
+        <img
+          v-if="!logoMissing"
+          class="title-logo"
+          :src="logoUrl"
+          alt="Monte's Delux Dice Poker"
+          decoding="async"
+          loading="eager"
+          @error="logoMissing = true"
+        />
+        <div v-else>
+          <p class="title-kicker">Monte's Delux presents</p>
+          <h1>Monte's Delux Dice Poker</h1>
         </div>
       </div>
 
-      <p class="title-tagline">Shake the dice, chase straights, and ride the upper bonus to victory.</p>
+      <p v-if="logoMissing" class="title-tagline">
+        Shake the dice, chase straights, and ride the upper bonus to victory.
+      </p>
 
       <section class="high-score-section" aria-label="High score">
         <button type="button" class="high-score-card" @click="$emit('leaderboard')">
@@ -138,6 +149,10 @@ defineProps<{
   hasHighScore: boolean;
 }>();
 
+const baseUrl = import.meta.env.BASE_URL || '/';
+const logoUrl = `${baseUrl}assets/branding/logo-full@768w.png`;
+const logoMissing = ref(false);
+
 const { canInstallPwa, updateAvailable } = usePwaState();
 const pwaBusy = ref(false);
 const pwaMessage = ref('');
@@ -214,9 +229,15 @@ defineEmits<{
 
 .title-card__header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+.title-logo {
+  width: min(560px, 100%);
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55));
 }
 
 .title-kicker {

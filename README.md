@@ -1,7 +1,4 @@
-# big-monte-dice-poker
-
-
-# Big Monte Dice Poker (Vue 3 + Dice-Box + PWA)
+# Monte's Delux Dice Poker
 
 Offline-first Vue 3 + Dice-Box build that deploys to GitHub Pages. Uses vite-plugin-pwa (Workbox GenerateSW) with a user prompt when updates are available.
 

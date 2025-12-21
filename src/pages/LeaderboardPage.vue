@@ -4,7 +4,7 @@
       <header class="leaderboard-header">
         <button type="button" class="ghost-button" @click="$emit('back')">Back</button>
         <div class="leaderboard-header__titles">
-          <p class="kicker">Big Monte</p>
+          <p class="kicker">Monte's Delux</p>
           <h2>Leaderboard</h2>
           <p class="subtitle">Top scores across completed games.</p>
         </div>
@@ -313,4 +313,3 @@ h2 {
   }
 }
 </style>
-

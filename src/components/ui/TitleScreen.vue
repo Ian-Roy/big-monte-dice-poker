@@ -1,9 +1,20 @@
 <template>
-  <div class="title-screen" role="dialog" aria-modal="true" aria-label="Big Monte Dice Poker">
+  <div class="title-screen" role="dialog" aria-modal="true" aria-label="Monte's Delux Dice Poker">
     <div class="title-card">
-      <p class="title-kicker">Big Monte presents</p>
-      <h1>Big Monte Dice Poker</h1>
-      <p class="title-tagline">Shake the dice, chase straights, and ride the upper bonus to victory.</p>
+      <img
+        v-if="!logoMissing"
+        class="title-logo"
+        :src="logoUrl"
+        alt="Monte's Delux Dice Poker"
+        decoding="async"
+        loading="eager"
+        @error="logoMissing = true"
+      />
+      <template v-else>
+        <p class="title-kicker">Monte's Delux presents</p>
+        <h1>Monte's Delux Dice Poker</h1>
+        <p class="title-tagline">Shake the dice, chase straights, and ride the upper bonus to victory.</p>
+      </template>
       <dl class="title-progress">
         <div>
           <dt>Round</dt>
@@ -32,6 +43,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
+
 type TitleSummary = {
   round: number;
   maxRounds: number;
@@ -44,6 +57,10 @@ defineProps<{
   canResume: boolean;
   summary: TitleSummary;
 }>();
+
+const baseUrl = import.meta.env.BASE_URL || '/';
+const logoUrl = `${baseUrl}assets/branding/logo-full@512w.png`;
+const logoMissing = ref(false);
 
 defineEmits<{
   (event: 'resume'): void;
@@ -72,6 +89,14 @@ defineEmits<{
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
   text-align: center;
   color: #e7edf2;
+}
+
+.title-logo {
+  width: min(420px, 100%);
+  height: auto;
+  display: block;
+  margin: 0 auto 18px;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.55));
 }
 
 .title-kicker {

@@ -8,7 +8,7 @@ High performance 3D dice roller module made with [BabylonJS](https://www.babylon
 
 The docs site is available at [fantasticdice.games](https://fantasticdice.games)
 
-## Fork additions (Big Monte Dice Poker)
+## Fork additions (Monte's Delux Dice Poker)
 
 - Default rendering runs on the main thread (`offscreen: false`) for better picking support; set `offscreen: true` to opt back in.
 - New picking helpers: `pickDieAt(x, y)` / `pickDieFromPointer(event)` return `{ hit, rollId, groupId, dieId }` and fire `onDiePicked` when present.
