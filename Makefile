@@ -68,3 +68,7 @@ $(ICONS_DIR)/favicon-32.png: $(BRANDING_DIR)/logo-mark.png | $(ICONS_DIR)
 $(ICONS_DIR)/favicon-16.png: $(BRANDING_DIR)/logo-mark.png | $(ICONS_DIR)
 	@ffmpeg -y -i "$<" -vf "scale=16:16:flags=lanczos" "$@"
 
+
+chrome-debug:
+# 	google-chrome-stable --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222
+	google-chrome-stable --user-data-dir=/tmp/chrome-cdp-profile --remote-debugging-port=9222 --no-first-run --no-default-browser-check
