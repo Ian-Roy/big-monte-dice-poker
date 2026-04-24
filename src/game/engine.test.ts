@@ -87,6 +87,12 @@ describe('GameEngine', () => {
     expect(computeCategoryScore('small-straight', [1, 2, 2, 3, 4])).toBe(30);
   });
 
+  it('uses standard full house scoring (yahtzee does not count as full house)', () => {
+    expect(computeCategoryScore('full-house', [2, 2, 3, 3, 3])).toBe(25);
+    expect(computeCategoryScore('full-house', [6, 6, 6, 6, 6])).toBe(0);
+    expect(computeCategoryScore('yahtzee', [6, 6, 6, 6, 6])).toBe(50);
+  });
+
   it('marks the game complete after all interactive categories are scored', () => {
     const engine = new GameEngine();
     const categories: CategoryKey[] = [

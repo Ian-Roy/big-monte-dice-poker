@@ -572,8 +572,7 @@ function countsByValue(dice: number[]) {
 function isFullHouse(counts: number[]) {
   const hasThree = counts.some((c) => c === 3);
   const hasTwo = counts.some((c) => c === 2);
-  const isYahtzee = counts.some((c) => c === 5);
-  return (hasThree && hasTwo) || isYahtzee;
+  return hasThree && hasTwo;
 }
 
 function hasStraight(dice: number[], length: number) {
