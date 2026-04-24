@@ -7,11 +7,28 @@ let initialized = false;
 const deferredInstallPrompt = ref<BeforeInstallPromptEvent | null>(null);
 const updateAvailable = ref(false);
 const isStandalone = ref(false);
+const isIosDevice = ref(false);
+const isIosSafari = ref(false);
+
+const IOS_BROWSER_TOKENS =
+  /CriOS|FxiOS|EdgiOS|OPiOS|OPT|DuckDuckGo|YaBrowser|GSA|Instagram|FBAN|FBAV/;
+
+export type PwaInstallMode = 'native' | 'ios-manual' | 'ios-open-safari' | 'unavailable';
 
 export function initPwaState() {
   if (initialized) return;
   initialized = true;
   if (typeof window === 'undefined') return;
+
+  const updatePlatform = () => {
+    const ua = navigator.userAgent ?? '';
+    const platform = navigator.platform ?? '';
+    const touchPoints = navigator.maxTouchPoints ?? 0;
+    const looksIos = /iPad|iPhone|iPod/.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
+    const looksSafari = /Safari/.test(ua) && !IOS_BROWSER_TOKENS.test(ua);
+    isIosDevice.value = looksIos;
+    isIosSafari.value = looksSafari;
+  };
 
   const updateStandalone = () => {
     const navStandalone = (navigator as any)?.standalone === true;
@@ -19,6 +36,7 @@ export function initPwaState() {
     isStandalone.value = navStandalone || mediaStandalone;
   };
 
+  updatePlatform();
   updateStandalone();
 
   try {
@@ -45,10 +63,23 @@ export function initPwaState() {
   });
 }
 
-export const canInstallPwa = computed(() => !!deferredInstallPrompt.value && !isStandalone.value);
-export const shouldShowRefresh = computed(() => !canInstallPwa.value);
+const hasNativeInstallPrompt = computed(() => !!deferredInstallPrompt.value);
 
-export async function promptPwaInstall(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
+export const installMode = computed<PwaInstallMode>(() => {
+  if (isStandalone.value) return 'unavailable';
+  if (hasNativeInstallPrompt.value) return 'native';
+  if (!isIosDevice.value) return 'unavailable';
+  return isIosSafari.value ? 'ios-manual' : 'ios-open-safari';
+});
+
+export const canInstallPwa = computed(() => installMode.value !== 'unavailable');
+
+export async function promptPwaInstall(): Promise<
+  'accepted' | 'dismissed' | 'unavailable' | 'ios-manual' | 'ios-open-safari'
+> {
+  if (installMode.value === 'ios-manual') return 'ios-manual';
+  if (installMode.value === 'ios-open-safari') return 'ios-open-safari';
+
   const promptEvent = deferredInstallPrompt.value;
   if (!promptEvent) return 'unavailable';
   deferredInstallPrompt.value = null;
@@ -66,9 +97,11 @@ export async function refreshPwa(): Promise<'updated' | 'missing' | 'unsupported
 export function usePwaState() {
   return {
     canInstallPwa,
-    shouldShowRefresh,
+    installMode,
     updateAvailable,
-    isStandalone
+    isStandalone,
+    isIosDevice,
+    isIosSafari
   };
 }
 
@@ -80,4 +113,3 @@ interface BeforeInstallPromptEvent extends Event {
   }>;
   prompt(): Promise<void>;
 }
-

@@ -2,7 +2,15 @@
   <div class="settings-page" aria-label="Settings">
     <div class="settings-shell">
       <header class="settings-header">
-        <button type="button" class="ghost-button" @click="$emit('back')">Back</button>
+        <button type="button" class="ghost-button ghost-button--back" @click="$emit('back')">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M14.71 5.29a1 1 0 0 1 0 1.42L10.41 11l4.3 4.29a1 1 0 1 1-1.42 1.42l-5-5a1 1 0 0 1 0-1.42l5-5a1 1 0 0 1 1.42 0Z"
+            />
+          </svg>
+          <span>Back</span>
+        </button>
         <div class="settings-header__titles">
           <h2>Settings</h2>
           <p>These options affect how the dice behave and look.</p>
@@ -419,7 +427,12 @@ defineEmits<{
 }
 
 .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 999px;
+  min-height: 44px;
   padding: 8px 14px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -439,5 +452,10 @@ defineEmits<{
 .ghost-button:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 2px rgba(146, 227, 255, 0.6);
+}
+
+.ghost-button--back svg {
+  width: 18px;
+  height: 18px;
 }
 </style>

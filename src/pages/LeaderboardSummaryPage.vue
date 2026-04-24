@@ -2,7 +2,15 @@
   <div class="summary-page" aria-label="Leaderboard entry summary">
     <div class="summary-card">
       <header class="summary-header">
-        <button type="button" class="ghost-button" @click="$emit('back')">Back</button>
+        <button type="button" class="ghost-button ghost-button--back" @click="$emit('back')">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M14.71 5.29a1 1 0 0 1 0 1.42L10.41 11l4.3 4.29a1 1 0 1 1-1.42 1.42l-5-5a1 1 0 0 1 0-1.42l5-5a1 1 0 0 1 1.42 0Z"
+            />
+          </svg>
+          <span>Back</span>
+        </button>
         <div class="summary-header__titles">
           <p class="kicker">Leaderboard</p>
           <h2>Game summary</h2>
@@ -192,7 +200,12 @@ h2 {
 }
 
 .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 999px;
+  min-height: 44px;
   padding: 10px 16px;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.35);
@@ -211,6 +224,11 @@ h2 {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   outline: none;
+}
+
+.ghost-button--back svg {
+  width: 18px;
+  height: 18px;
 }
 
 .meta-section {
@@ -406,4 +424,3 @@ h2 {
   color: rgba(255, 255, 255, 0.7);
 }
 </style>
-

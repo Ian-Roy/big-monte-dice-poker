@@ -1,24 +1,31 @@
 <template>
   <div id="app-root" :class="{ 'orientation-locked': orientationLocked }">
-    <template v-if="currentPage === 'title'">
+    <template v-if="currentPage === 'title' || currentPage === 'new-game'">
       <TitlePage
-        :saves="savedGames"
-        :active-save-id="store.activeSaveId"
+        :has-saved-games="savedGames.length > 0"
         :max-saves="store.maxSaveSlots"
         :high-score="leaderboard.topScore"
         :has-high-score="leaderboard.entries.length > 0"
-        @resume="handleResumeGame"
         @create-game="openNewGameDialog"
-        @delete="handleDeleteSavedGame"
+        @load-games="openLoadGames"
         @settings="navigateTo('settings')"
         @leaderboard="openLeaderboard"
       />
       <NewGameDialog
-        v-if="newGameDialogOpen"
+        v-if="currentPage === 'new-game'"
         @cancel="closeNewGameDialog"
         @create="handleCreateGame"
       />
     </template>
+    <LoadGamePage
+      v-else-if="currentPage === 'load-games'"
+      :saves="savedGames"
+      :active-save-id="store.activeSaveId"
+      :max-saves="store.maxSaveSlots"
+      @resume="handleResumeGame"
+      @delete="handleDeleteSavedGame"
+      @back="navigateTo('title')"
+    />
     <SettingsPage
       v-else-if="currentPage === 'settings'"
       @back="navigateTo('title')"
@@ -81,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import DiceServiceBridge from './components/DiceServiceBridge.vue';
 import AppBottomPanel from './components/layout/AppBottomPanel.vue';
@@ -94,6 +101,7 @@ import ToastStack from './components/ui/ToastStack.vue';
 import SettingsPage from './pages/SettingsPage.vue';
 import LeaderboardPage from './pages/LeaderboardPage.vue';
 import LeaderboardSummaryPage from './pages/LeaderboardSummaryPage.vue';
+import LoadGamePage from './pages/LoadGamePage.vue';
 import TitlePage from './pages/TitlePage.vue';
 import { useOrientationLock } from './composables/useOrientationLock';
 import { useToasts } from './composables/useToasts';
@@ -122,9 +130,21 @@ recordFinishedSaves();
 store.cleanupFinishedSaves();
 
 const { orientationLocked } = useOrientationLock({ maxMobileWidth: 900 });
-const currentPage = ref<'title' | 'settings' | 'leaderboard' | 'leaderboard-summary' | 'game'>('title');
+type AppPage = 'title' | 'new-game' | 'load-games' | 'settings' | 'leaderboard' | 'leaderboard-summary' | 'game';
+
+type AppHistoryState = {
+  marker: 'big-monte-dice-poker';
+  page: AppPage;
+  leaderboardEntryId?: string | null;
+};
+
+type NavigateOptions = {
+  history?: 'push' | 'replace' | 'skip';
+  leaderboardEntryId?: string | null;
+};
+
+const currentPage = ref<AppPage>('title');
 const activeLayer = ref<ActiveLayer>('dice');
-const newGameDialogOpen = ref(false);
 const turnOverlay = ref<null | { mode: 'current' | 'next' }>(null);
 const highScorePrompt = ref<null | { entryId: string; leaderPlayerId: string; score: number; leaderName: string }>(null);
 const leaderboardEntryId = ref<string | null>(null);
@@ -133,6 +153,7 @@ const diceVisibility = computed<'visible' | 'hidden'>(() => {
   return activeLayer.value === 'dice' ? 'visible' : 'hidden';
 });
 const bodyScrollLocked = computed(() => currentPage.value === 'game' && !orientationLocked.value);
+const APP_HISTORY_MARKER = 'big-monte-dice-poker';
 
 const turnOverlayPlayer = computed(() => {
   if (!turnOverlay.value) return null;
@@ -234,23 +255,128 @@ const savedGames = computed(() =>
   })
 );
 
-function navigateTo(page: typeof currentPage.value) {
-  if (page === 'title') {
+function isAppHistoryState(value: unknown): value is AppHistoryState {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<AppHistoryState>;
+  return candidate.marker === APP_HISTORY_MARKER && typeof candidate.page === 'string';
+}
+
+function routeHash(page: AppPage, entryId: string | null): string {
+  if (page === 'title') return '';
+  if (page === 'new-game') return '#new-game';
+  if (page === 'load-games') return '#load-games';
+  if (page === 'settings') return '#settings';
+  if (page === 'leaderboard') return '#leaderboard';
+  if (page === 'leaderboard-summary') {
+    if (!entryId) return '#leaderboard';
+    return `#leaderboard/${encodeURIComponent(entryId)}`;
+  }
+  return '#game';
+}
+
+function parseRouteFromHash(rawHash: string): { page: AppPage; leaderboardEntryId: string | null } | null {
+  const hash = rawHash.replace(/^#/, '').trim();
+  if (!hash || hash === 'title') return { page: 'title', leaderboardEntryId: null };
+  if (hash === 'new-game') return { page: 'new-game', leaderboardEntryId: null };
+  if (hash === 'load-games') return { page: 'load-games', leaderboardEntryId: null };
+  if (hash === 'settings') return { page: 'settings', leaderboardEntryId: null };
+  if (hash === 'leaderboard') return { page: 'leaderboard', leaderboardEntryId: null };
+  if (hash.startsWith('leaderboard/')) {
+    const entryId = decodeURIComponent(hash.slice('leaderboard/'.length)).trim();
+    if (!entryId) return { page: 'leaderboard', leaderboardEntryId: null };
+    return { page: 'leaderboard-summary', leaderboardEntryId: entryId };
+  }
+  if (hash === 'game') return { page: 'game', leaderboardEntryId: null };
+  return null;
+}
+
+function normalizeRoute(route: { page: AppPage; leaderboardEntryId: string | null }) {
+  if (route.page === 'load-games' && store.saveSlots.length === 0) {
+    return { page: 'title' as AppPage, leaderboardEntryId: null };
+  }
+  if (route.page === 'leaderboard-summary' && !route.leaderboardEntryId) {
+    return { page: 'leaderboard' as AppPage, leaderboardEntryId: null };
+  }
+  if (route.page === 'game' && !store.activeSlot) {
+    return { page: 'title' as AppPage, leaderboardEntryId: null };
+  }
+  return route;
+}
+
+function readBrowserRoute() {
+  if (typeof window === 'undefined') {
+    return { page: 'title' as AppPage, leaderboardEntryId: null };
+  }
+
+  const state = window.history.state;
+  if (isAppHistoryState(state)) {
+    return normalizeRoute({
+      page: state.page,
+      leaderboardEntryId: state.page === 'leaderboard-summary' ? state.leaderboardEntryId?.trim() ?? null : null
+    });
+  }
+
+  const hashed = parseRouteFromHash(window.location.hash);
+  if (hashed) return normalizeRoute(hashed);
+
+  return { page: 'title' as AppPage, leaderboardEntryId: null };
+}
+
+function syncBrowserHistory(mode: 'push' | 'replace') {
+  if (typeof window === 'undefined') return;
+  const state: AppHistoryState = {
+    marker: APP_HISTORY_MARKER,
+    page: currentPage.value,
+    leaderboardEntryId: currentPage.value === 'leaderboard-summary' ? leaderboardEntryId.value : null
+  };
+  const hash = routeHash(currentPage.value, leaderboardEntryId.value);
+  const nextUrl = `${window.location.pathname}${window.location.search}${hash}`;
+  if (mode === 'replace') {
+    window.history.replaceState(state, '', nextUrl);
+    return;
+  }
+  window.history.pushState(state, '', nextUrl);
+}
+
+function navigateTo(page: AppPage, options: NavigateOptions = {}) {
+  const historyMode = options.history ?? 'push';
+  const targetPage = page;
+  const targetEntryId =
+    targetPage === 'leaderboard-summary'
+      ? (options.leaderboardEntryId ?? leaderboardEntryId.value ?? '').trim() || null
+      : null;
+  const normalizedPage: AppPage =
+    targetPage === 'leaderboard-summary' && !targetEntryId ? 'leaderboard' : targetPage;
+  const normalizedEntryId = normalizedPage === 'leaderboard-summary' ? targetEntryId : null;
+  const isSameRoute =
+    currentPage.value === normalizedPage && leaderboardEntryId.value === normalizedEntryId;
+
+  if (normalizedPage === 'title') {
     recordFinishedSaves();
     store.cleanupFinishedSaves();
-    newGameDialogOpen.value = false;
     turnOverlay.value = null;
     highScorePrompt.value = null;
   }
-  currentPage.value = page;
+
+  leaderboardEntryId.value = normalizedEntryId;
+  currentPage.value = normalizedPage;
+
+  if (historyMode === 'skip' || typeof window === 'undefined') return;
+  if (historyMode === 'push' && isSameRoute) return;
+  syncBrowserHistory(historyMode);
 }
 
 function openNewGameDialog() {
-  newGameDialogOpen.value = true;
+  navigateTo('new-game');
+}
+
+function openLoadGames() {
+  if (store.saveSlots.length === 0) return;
+  navigateTo('load-games');
 }
 
 function closeNewGameDialog() {
-  newGameDialogOpen.value = false;
+  navigateTo('title', { history: 'replace' });
 }
 
 function handleCreateGame(setup: NewGameSetup) {
@@ -260,9 +386,8 @@ function handleCreateGame(setup: NewGameSetup) {
     pushToast('You already have 4 saved games. Delete or finish one to create another.');
     return;
   }
-  closeNewGameDialog();
   setActiveLayer('dice');
-  currentPage.value = 'game';
+  navigateTo('game', { history: 'replace' });
   if (store.isMultiplayer && !store.sessionCompleted) {
     turnOverlay.value = { mode: 'current' };
   }
@@ -316,7 +441,7 @@ function handleResumeGame(id: string) {
     pushToast('Could not load that saved game.');
     return;
   }
-  currentPage.value = 'game';
+  navigateTo('game');
   setActiveLayer(store.sessionCompleted ? 'summary' : 'dice');
   if (store.isMultiplayer && !store.sessionCompleted) {
     turnOverlay.value = { mode: 'current' };
@@ -325,16 +450,17 @@ function handleResumeGame(id: string) {
 
 function handleDeleteSavedGame(id: string) {
   store.deleteGameSlot(id);
+  if (currentPage.value === 'load-games' && store.saveSlots.length === 0) {
+    navigateTo('title', { history: 'replace' });
+  }
 }
 
 function openLeaderboard() {
-  leaderboardEntryId.value = null;
-  navigateTo('leaderboard');
+  navigateTo('leaderboard', { leaderboardEntryId: null });
 }
 
 function openLeaderboardSummary(entryId: string) {
-  leaderboardEntryId.value = entryId;
-  navigateTo('leaderboard-summary');
+  navigateTo('leaderboard-summary', { leaderboardEntryId: entryId });
 }
 
 function handleBackToTitle() {
@@ -384,7 +510,30 @@ async function handleTurnOverlayPrimary() {
   }
 }
 
+function handlePopState() {
+  const route = readBrowserRoute();
+  const expectedHash = routeHash(route.page, route.leaderboardEntryId);
+  const currentHash = typeof window !== 'undefined' ? window.location.hash : '';
+  navigateTo(route.page, {
+    history: expectedHash === currentHash ? 'skip' : 'replace',
+    leaderboardEntryId: route.leaderboardEntryId
+  });
+}
+
+onMounted(() => {
+  if (typeof window === 'undefined') return;
+  const initialRoute = readBrowserRoute();
+  navigateTo(initialRoute.page, {
+    history: 'replace',
+    leaderboardEntryId: initialRoute.leaderboardEntryId
+  });
+  window.addEventListener('popstate', handlePopState);
+});
+
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('popstate', handlePopState);
+  }
   if (typeof document !== 'undefined') {
     document.body.classList.remove('dice-layer-locked');
   }
